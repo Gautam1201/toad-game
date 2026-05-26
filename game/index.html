@@ -7,10 +7,27 @@
     <title>Toad's Life</title>
   </head>
   <body>
+    <div class="start-screen">
+      <div class="start-content">
+        <h1>🐸 TOAD'S LIFE</h1>
+        <div class="instructions">
+          <h2>How to Play</h2>
+          <p><strong>Arrow Keys / WASD</strong> - Move Tode</p>
+          <p><strong>Spacebar</strong> - Attack nearby enemies</p>
+          <p><strong>Goal</strong> - Survive as long as possible!</p>
+        </div>
+        <div class="scoring">
+          <h3>Scoring</h3>
+          <p>+0.1 points per second (survival)</p>
+          <p>+10 points per enemy defeated</p>
+        </div>
+        <div class="start-button">Press SPACE or Click to Start</div>
+      </div>
+    </div>
     <div class="score">Score: 0</div>
     <div class="game-over" style="display: none;">
       <h1>GAME OVER</h1>
-      <p>Press SPACE to Reset</p>
+      <p>Press SPACE or Click to Reset</p>
     </div>
     <canvas class="game"></canvas>
     <script type="module" src="/src/main.js"></script>

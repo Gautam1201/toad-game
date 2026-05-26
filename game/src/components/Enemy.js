@@ -16,6 +16,8 @@ export default class Enemy {
         this.model = null;
         this.baseZ = 0;
         this.collisionRadius = 0;
+        this.shadow = null;
+        this.hoverTime = Math.random() * Math.PI * 2; // Random start phase for variety
 
         this.group.position.copy(spawnPosition);
         this.scene.add(this.group);
@@ -34,12 +36,24 @@ export default class Enemy {
             const size = new THREE.Vector3();
             box.getSize(size);
             
-            // Positioning on top of the ground
-            this.baseZ = size.z / 2;
+            // Positioning on top of the ground with slight hover
+            this.baseZ = size.z / 2 + 3; // Add 3 units hover height
             this.model.position.z = this.baseZ;
 
             // Use the average of width and depth for collision radius
             this.collisionRadius = (size.x + size.y) / 4;
+            
+            // Create shadow circle to visualize hitbox (lighter for enemies)
+            const shadowGeometry = new THREE.CircleGeometry(this.collisionRadius, 32);
+            const shadowMaterial = new THREE.MeshBasicMaterial({
+                color: 0x000000,
+                transparent: true,
+                opacity: 0.15, // Lighter shadow for hovering effect
+                side: THREE.DoubleSide
+            });
+            this.shadow = new THREE.Mesh(shadowGeometry, shadowMaterial);
+            this.shadow.position.z = 0.1;
+            this.group.add(this.shadow);
             
             this.group.add(this.model);
         });
@@ -47,6 +61,11 @@ export default class Enemy {
 
     update(deltaTime, allEnemies = [], speed = ENEMY_SPEED, houses = []) {
         if (!this.model) return false;
+
+        // Hovering animation (subtle up and down motion)
+        this.hoverTime += deltaTime * 2; // 2 rad/sec for smooth oscillation
+        const hoverOffset = Math.sin(this.hoverTime) * 2; // ±2 units amplitude
+        this.model.position.z = this.baseZ + hoverOffset;
 
         // Direction toward the player's current coordinates
         const direction = new THREE.Vector3()
@@ -57,37 +76,55 @@ export default class Enemy {
 
         // Frame-rate-independent step: speed is now units-per-reference-frame; scale by dt.
         const stepDistance = speed * deltaTime * FRAME_RATE_REFERENCE;
-        const nextPosition = this.group.position.clone().addScaledVector(directionXY, stepDistance);
+        
+        // Try multiple movement directions if direct path is blocked
+        const attemptDirections = [
+            directionXY.clone(),                                    // Direct path
+            directionXY.clone().applyAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 4),   // 45° right
+            directionXY.clone().applyAxisAngle(new THREE.Vector3(0, 0, 1), -Math.PI / 4),  // 45° left
+            directionXY.clone().applyAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2),   // 90° right
+            directionXY.clone().applyAxisAngle(new THREE.Vector3(0, 0, 1), -Math.PI / 2),  // 90° left
+        ];
 
-        // Collision check with player
-        const collidesWithPlayer = checkCollision(
-            nextPosition, this.collisionRadius,
-            this.player.group.position, this.player.collisionRadius
-        );
+        let moved = false;
+        let finalDirection = directionXY;
 
-        if (collidesWithPlayer) {
-            return true;
-        }
+        for (const attemptDir of attemptDirections) {
+            const nextPosition = this.group.position.clone().addScaledVector(attemptDir, stepDistance);
 
-        // Collision check with other enemies
-        const collidesWithEnemy = allEnemies.some(other => {
-            if (other === this || !other.model) return false;
-            return checkCollision(
+            // Collision check with player
+            const collidesWithPlayer = checkCollision(
                 nextPosition, this.collisionRadius,
-                other.group.position, other.collisionRadius
+                this.player.group.position, this.player.collisionRadius
             );
-        });
 
-        // Collision check with houses
-        const collidesWithHouse = houses.some(house => house.checkCollision(nextPosition, this.collisionRadius));
+            if (collidesWithPlayer) {
+                return true;
+            }
 
-        // Only move if no collision
-        if (!collidesWithEnemy && !collidesWithHouse) {
-            this.group.position.copy(nextPosition);
+            // Collision check with other enemies
+            const collidesWithEnemy = allEnemies.some(other => {
+                if (other === this || !other.model) return false;
+                return checkCollision(
+                    nextPosition, this.collisionRadius,
+                    other.group.position, other.collisionRadius
+                );
+            });
+
+            // Collision check with houses
+            const collidesWithHouse = houses.some(house => house.checkCollision(nextPosition, this.collisionRadius));
+
+            // If no collision, move in this direction
+            if (!collidesWithEnemy && !collidesWithHouse) {
+                this.group.position.copy(nextPosition);
+                finalDirection = attemptDir;
+                moved = true;
+                break;
+            }
         }
 
-        // Rotate to face player (based on direction vector in the XY plane)
-        const angle = Math.atan2(directionXY.y, directionXY.x);
+        // Rotate to face movement direction (or player if couldn't move)
+        const angle = Math.atan2(finalDirection.y, finalDirection.x);
         this.model.rotation.y = angle + Math.PI / 2;
 
         return false;

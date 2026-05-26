@@ -86,8 +86,8 @@ const spawnLocations = [
 ];
 
 // Base values for scaling
-const BASE_ENEMY_SPEED = 0.5;
-const BASE_PLAYER_SPEED = 2;
+const BASE_ENEMY_SPEED = 0.7;
+const BASE_PLAYER_SPEED = 2.5;
 const BASE_ATTACK_COOLDOWN = 1000;
 const BASE_ATTACK_RADIUS = 50;
 
@@ -114,10 +114,12 @@ const SCORE_PER_KILL = 10;
 // Scoring state
 let score = 0;
 let isGameOver = false;
+let gameStarted = false;
 const floatingTexts = [];
 const clock = new THREE.Clock();
 const scoreElement = document.querySelector('.score');
 const gameOverElement = document.querySelector('.game-over');
+const startScreenElement = document.querySelector('.start-screen');
 
 function spawnEnemy() {
     if (isGameOver || enemies.length >= currentMaxEnemies) return;
@@ -145,6 +147,11 @@ function resetGame() {
     player.progress = 0;
     player.startPosition.set(0, 0, 0);
     player.targetPosition.set(0, 0, 0);
+    
+    // Reset player model position to ground level
+    if (player.model) {
+        player.model.position.z = player.baseZ;
+    }
 
     // Reset score
     score = 0;
@@ -185,15 +192,40 @@ window.addEventListener('resize', () => {
 
 // Input collection
 const inputQueue = [];
+
+// Map WASD to Arrow keys
+const keyMap = {
+    'KeyW': 'ArrowUp',
+    'KeyS': 'ArrowDown',
+    'KeyA': 'ArrowLeft',
+    'KeyD': 'ArrowRight',
+    'ArrowUp': 'ArrowUp',
+    'ArrowDown': 'ArrowDown',
+    'ArrowLeft': 'ArrowLeft',
+    'ArrowRight': 'ArrowRight'
+};
+
 window.addEventListener('keydown', (event) => {
+    // Handle start screen
+    if (!gameStarted && event.code === 'Space') {
+        gameStarted = true;
+        if (startScreenElement) startScreenElement.style.display = 'none';
+        clock.getDelta(); // Reset clock when game starts
+        return;
+    }
+
+    if (!gameStarted) return;
+
     if (isGameOver) {
         if (event.code === 'Space') {
             resetGame();
         }
         return;
     }
-    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
-        inputQueue.push(event.key);
+    
+    // Check if it's a movement key (Arrow or WASD)
+    if (keyMap[event.code]) {
+        inputQueue.push(keyMap[event.code]);
     } else if (event.code === 'Space') {
         const { kills, positions } = player.attack(enemies, scene, currentPlayerAttackRadius, currentPlayerAttackCooldown);
         if (kills > 0) {
@@ -205,6 +237,20 @@ window.addEventListener('keydown', (event) => {
     }
 });
 
+// Mouse click support for start/restart
+window.addEventListener('click', (event) => {
+    if (!gameStarted) {
+        gameStarted = true;
+        if (startScreenElement) startScreenElement.style.display = 'none';
+        clock.getDelta(); // Reset clock when game starts
+        return;
+    }
+    
+    if (isGameOver) {
+        resetGame();
+    }
+});
+
 // Animation loop
 // Clamp dt to avoid huge jumps after tab-blur / GC pause / breakpoints,
 // which would otherwise teleport enemies past the player in a single tick.
@@ -212,6 +258,12 @@ const MAX_DELTA_TIME = 0.1; // seconds
 
 renderer.setAnimationLoop(() => {
     const deltaTime = Math.min(clock.getDelta(), MAX_DELTA_TIME);
+
+    // Always render, but only update game logic if started
+    if (!gameStarted) {
+        renderer.render(scene, camera);
+        return;
+    }
 
     if (isGameOver) {
         renderer.render(scene, camera);
