@@ -99,19 +99,16 @@ Toad-game/
 │   │   └── utils/          # Collision detection algorithms
 │   ├── public/             # Static assets (3D models, icons)
 │   └── package.json
-├── TECHNICAL_README.md     # Deep dive into implementation details
 └── README.md               # This file
 ```
 
 ## 📖 Documentation
 
-For an in-depth technical analysis including:
+An in-depth technical analysis includes:
 - Game theory concepts (Dynamic Difficulty Adjustment, Risk-Reward mechanics)
 - Advanced programming techniques (Frame-rate independence, Collision detection)
 - Performance optimizations (Object pooling, Resource management)
 - Mathematical foundations (Linear interpolation, Parabolic motion)
-
-Check out the [**TECHNICAL_README.md**](./TECHNICAL_README.md)
 
 ## 🎓 About This Project
 

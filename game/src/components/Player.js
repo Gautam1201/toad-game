@@ -35,6 +35,9 @@ export default class Player {
         this.attackVisualDuration = 200; // ms
         this.attackVisualStartTime = 0;
         
+        // Shadow to show hitbox
+        this.shadow = null;
+        
         this.loader.load('/models/tode.glb', (gltf) => {
             this.model = gltf.scene;
             
@@ -55,6 +58,18 @@ export default class Player {
 
             // Use the average of width and depth for collision radius (more accurate for rounded characters)
             this.collisionRadius = (size.x + size.y) / 4;
+            
+            // Create shadow circle to visualize hitbox
+            const shadowGeometry = new THREE.CircleGeometry(this.collisionRadius, 32);
+            const shadowMaterial = new THREE.MeshBasicMaterial({
+                color: 0x000000,
+                transparent: true,
+                opacity: 0.3,
+                side: THREE.DoubleSide
+            });
+            this.shadow = new THREE.Mesh(shadowGeometry, shadowMaterial);
+            this.shadow.position.z = 0.1;
+            this.group.add(this.shadow);
             
             this.group.add(this.model);
         });
@@ -223,6 +238,15 @@ export default class Player {
         const jumpOffset = Math.sin(this.progress * Math.PI) * JUMP_HEIGHT;
         if (this.model) {
             this.model.position.z = this.baseZ + jumpOffset;
+        }
+
+        // Update shadow opacity based on jump height (more realistic)
+        if (this.shadow) {
+            // When on ground (jumpOffset = 0): opacity = 0.3
+            // When at peak (jumpOffset = JUMP_HEIGHT): opacity = 0.1
+            // Linear interpolation: opacity decreases as height increases
+            const heightRatio = jumpOffset / JUMP_HEIGHT; // 0 to 1
+            this.shadow.material.opacity = 0.3 - (heightRatio * 0.2); // 0.3 to 0.1
         }
 
         // Continuous collision check during hop: enemies may have moved into our path
