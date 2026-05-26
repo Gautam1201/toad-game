@@ -1,0 +1,74 @@
+# Node.js dependencies
+node_modules/
+game/node_modules/
+
+# Build outputs
+dist/
+build/
+game/dist/
+game/build/
+
+# Vite cache
+.vite/
+game/.vite/
+game/node_modules/.vite/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Test coverage
+coverage/
+*.lcov
+.nyc_output
+
+# Package manager lock files (optional - uncomment if you want to ignore)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# Jest cache
+.jest-cache/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# OS files
+Thumbs.db
+Desktop.ini
+
+# JetBrains Academy specific
+.junie/
+
+# Production build artifacts
+*.tgz
+*.zip
+*.tar.gz
+
+# Debug files
+*.log
+
+# Local configuration
+.eslintcache
+
+
+## Technical Documentation
+TECHNICAL_README.md

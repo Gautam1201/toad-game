@@ -1,0 +1,43 @@
+body {
+  margin: 0;
+  overflow: hidden;
+}
+
+.score {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: white;
+  font-family: Arial, sans-serif;
+  font-size: 24px;
+  font-weight: bold;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  z-index: 10;
+}
+
+.game-over {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: red;
+  padding: 40px;
+  border-radius: 20px;
+  text-align: center;
+  font-family: Arial, sans-serif;
+  z-index: 20;
+}
+
+.game-over h1 {
+  font-size: 48px;
+  margin: 0 0 20px 0;
+}
+
+.game-over p {
+  color: white;
+  font-size: 20px;
+  margin: 0;
+}
