@@ -3,8 +3,8 @@ import * as THREE from 'three';
 export default function createMap() {
     const group = new THREE.Group();
 
-    const gridSize = 1000;
-    const divisions = 20;
+    const gridSize = 1000; // Back to original size
+    const divisions = 20;  // Back to original
     const tileSize = gridSize / divisions;
 
     const darkGreen = new THREE.Color(0x228B22);
