@@ -128,13 +128,58 @@ const SCORE_PER_KILL = 10;
 let score = 0;
 let isGameOver = false;
 let gameStarted = false;
+let isPaused = false; // Pause state
 let inspectMode = false; // Developer inspect mode
 const floatingTexts = [];
 const clock = new THREE.Clock();
+let lastPlayerHealth = 3; // Track health to detect damage
 const scoreElement = document.querySelector('.score');
+const healthBarElement = document.querySelector('.health-bar');
 const gameOverElement = document.querySelector('.game-over');
 const startScreenElement = document.querySelector('.start-screen');
 const inspectModeElement = document.querySelector('.inspect-mode');
+const pauseMenuElement = document.querySelector('.pause-menu');
+const pauseButtonUI = document.querySelector('.pause-button-ui');
+
+function updateHealthUI() {
+    if (!healthBarElement) return;
+    
+    const health = player.getHealth();
+    healthBarElement.innerHTML = '';
+    
+    for (let i = 0; i < health.max; i++) {
+        const heartContainer = document.createElement('div');
+        heartContainer.className = 'heart';
+        
+        if (i < health.current) {
+            // Full heart - show colored toad
+            const img = document.createElement('img');
+            img.src = '/tode.svg';
+            img.alt = 'Health';
+            heartContainer.appendChild(img);
+        } else {
+            // Empty heart - show grayscale/faded toad
+            const img = document.createElement('img');
+            img.src = '/tode.svg';
+            img.alt = 'Lost Health';
+            heartContainer.classList.add('empty');
+            heartContainer.appendChild(img);
+        }
+        
+        healthBarElement.appendChild(heartContainer);
+    }
+}
+
+function showDamageFlash() {
+    const flash = document.createElement('div');
+    flash.className = 'damage-flash';
+    document.body.appendChild(flash);
+    
+    // Remove after animation completes
+    setTimeout(() => {
+        document.body.removeChild(flash);
+    }, 300);
+}
 
 function spawnEnemy() {
     if (isGameOver || enemies.length >= currentMaxEnemies) return;
@@ -182,14 +227,47 @@ function triggerGameOver() {
     if (isGameOver) return;
     isGameOver = true;
     if (gameOverElement) gameOverElement.style.display = 'block';
+    if (pauseButtonUI) pauseButtonUI.style.display = 'none'; // Hide pause button on game over
     player.group.visible = false;
+    // Update health UI one final time to show 0 hearts
+    updateHealthUI();
     // Clear held keys
     keysPressed.clear();
+}
+
+function togglePause() {
+    // Can't pause if game hasn't started or is over
+    if (!gameStarted || isGameOver) return;
+    
+    isPaused = !isPaused;
+    
+    if (pauseMenuElement) {
+        pauseMenuElement.style.display = isPaused ? 'flex' : 'none';
+    }
+    
+    // Hide pause button when paused, show when playing
+    if (pauseButtonUI) {
+        pauseButtonUI.style.display = isPaused ? 'none' : 'flex';
+    }
+    
+    // Clear held keys when pausing
+    if (isPaused) {
+        keysPressed.clear();
+    }
+}
+
+// Pause button click handler
+if (pauseButtonUI) {
+    pauseButtonUI.addEventListener('click', (event) => {
+        event.stopPropagation(); // Prevent triggering other click handlers
+        togglePause();
+    });
 }
 
 function resetGame() {
     isGameOver = false;
     if (gameOverElement) gameOverElement.style.display = 'none';
+    if (pauseButtonUI) pauseButtonUI.style.display = 'flex'; // Show pause button when game resets
     
     // Reset player
     player.group.position.set(0, 0, 0);
@@ -198,6 +276,12 @@ function resetGame() {
     player.progress = 0;
     player.startPosition.set(0, 0, 0);
     player.targetPosition.set(0, 0, 0);
+    
+    // Reset health
+    player.currentHealth = player.maxHealth;
+    player.isInvulnerable = false;
+    lastPlayerHealth = player.maxHealth;
+    updateHealthUI();
     
     // Reset player model position to ground level
     if (player.model) {
@@ -315,11 +399,22 @@ window.addEventListener('keydown', (event) => {
     if (!gameStarted && event.code === 'Space') {
         gameStarted = true;
         if (startScreenElement) startScreenElement.style.display = 'none';
+        if (pauseButtonUI) pauseButtonUI.style.display = 'flex'; // Show pause button when game starts
         clock.getDelta(); // Reset clock when game starts
+        updateHealthUI(); // Initialize health display
         return;
     }
 
     if (!gameStarted) return;
+    
+    // Handle ESC key for pause (works during gameplay)
+    if (event.code === 'Escape') {
+        togglePause();
+        return;
+    }
+    
+    // Don't process other keys if paused
+    if (isPaused) return;
 
     // Toggle inspect mode (works even if game over)
     if (event.code === 'KeyI') {
@@ -366,12 +461,32 @@ window.addEventListener('keyup', (event) => {
     }
 });
 
-// Mouse click support for start/restart
+// Mouse click support for start/restart/pause
 window.addEventListener('click', (event) => {
+    // Only start game if clicking the start button
     if (!gameStarted) {
-        gameStarted = true;
-        if (startScreenElement) startScreenElement.style.display = 'none';
-        clock.getDelta(); // Reset clock when game starts
+        const startButton = document.querySelector('.start-button');
+        if (startButton && (event.target === startButton || startButton.contains(event.target))) {
+            gameStarted = true;
+            if (startScreenElement) startScreenElement.style.display = 'none';
+            if (pauseButtonUI) pauseButtonUI.style.display = 'flex'; // Show pause button when game starts
+            clock.getDelta(); // Reset clock when game starts
+            updateHealthUI(); // Initialize health display
+        }
+        return;
+    }
+    
+    // Resume from pause - only if clicking the pause button or dark overlay (not the pause content panel)
+    if (isPaused && pauseMenuElement && pauseMenuElement.style.display !== 'none') {
+        const pauseContent = document.querySelector('.pause-content');
+        const pauseButton = document.querySelector('.pause-button');
+        
+        // Check if click is on the resume button OR outside the content panel (on dark overlay)
+        if (event.target.classList.contains('pause-button') || 
+            event.target === pauseMenuElement ||
+            pauseButton?.contains(event.target)) {
+            togglePause();
+        }
         return;
     }
     
@@ -395,6 +510,12 @@ renderer.setAnimationLoop(() => {
     }
 
     if (isGameOver) {
+        renderer.render(scene, camera);
+        return;
+    }
+    
+    // Don't update game logic if paused
+    if (isPaused) {
         renderer.render(scene, camera);
         return;
     }
@@ -432,6 +553,15 @@ renderer.setAnimationLoop(() => {
     if (scoreElement) {
         scoreElement.textContent = `Score: ${Math.floor(score)}`;
     }
+    
+    // Check if player took damage
+    const currentHealth = player.getHealth().current;
+    if (currentHealth < lastPlayerHealth) {
+        showDamageFlash();
+    }
+    lastPlayerHealth = currentHealth;
+    
+    updateHealthUI();
 
     // In inspect mode: move camera with WASD/arrows, otherwise move player
     if (inspectMode) {

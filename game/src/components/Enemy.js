@@ -113,8 +113,13 @@ export default class Enemy {
                 this.player.group.position, this.player.collisionRadius
             );
 
-            if (collidesWithPlayer) {
-                return true;
+            if (collidesWithPlayer && !this.player.isInvulnerable) {
+                // Deal damage to player instead of instant game over
+                const playerDied = this.player.takeDamage(1);
+                if (playerDied) {
+                    return true; // Game over
+                }
+                // Continue trying to move even after damaging player
             }
 
             // Collision check with other enemies

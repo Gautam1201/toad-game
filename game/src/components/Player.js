@@ -35,6 +35,13 @@ export default class Player {
         this.attackVisualDuration = 200; // ms
         this.attackVisualStartTime = 0;
         
+        // Health system
+        this.maxHealth = 3;
+        this.currentHealth = 3;
+        this.isInvulnerable = false;
+        this.invulnerabilityDuration = 1000; // 1 second of invulnerability after taking damage
+        this.lastDamageTime = 0;
+        
         // Shadow to show hitbox
         this.shadow = null;
         
@@ -100,19 +107,23 @@ export default class Player {
         }
 
         // Collision check with enemies
-        let triggeredGameOver = false;
-        const hasEnemyCollision = enemies.some(enemy => {
-            if (!enemy.model) return false;
-            const collision = checkCollision(targetPos, this.collisionRadius, enemy.group.position, enemy.collisionRadius);
-            if (collision) {
-                triggeredGameOver = true;
-                return true;
-            }
-            return false;
-        });
+        if (!this.isInvulnerable) {
+            const hasEnemyCollision = enemies.some(enemy => {
+                if (!enemy.model) return false;
+                const collision = checkCollision(targetPos, this.collisionRadius, enemy.group.position, enemy.collisionRadius);
+                if (collision) {
+                    // Take damage instead of blocking movement
+                    return this.takeDamage(1); // Returns true if player died (will block movement if dead)
+                }
+                return false;
+            });
 
-        if (triggeredGameOver) return true;
-        if (hasEnemyCollision) return false;
+            if (hasEnemyCollision) {
+                // If we took damage and died, block the movement
+                if (this.currentHealth <= 0) return true;
+                // Otherwise allow the jump but player took damage
+            }
+        }
 
         // Collision check with houses
         const hasHouseCollision = houses.some(house => house.checkCollision(targetPos, this.collisionRadius));
@@ -192,10 +203,45 @@ export default class Player {
         }
         return { kills, positions };
     }
+    
+    takeDamage(amount = 1) {
+        // Can't take damage if invulnerable
+        if (this.isInvulnerable) return false;
+        
+        this.currentHealth -= amount;
+        this.lastDamageTime = Date.now();
+        this.isInvulnerable = true;
+        
+        // Return true if player died
+        return this.currentHealth <= 0;
+    }
+    
+    getHealth() {
+        return {
+            current: this.currentHealth,
+            max: this.maxHealth
+        };
+    }
 
     update(deltaTime, moveSpeed = MOVE_SPEED, attackCooldown = ATTACK_COOLDOWN, attackRadius = ATTACK_RADIUS, enemies = []) {
         const now = Date.now();
         const cooldownElapsed = now - this.lastAttackTime;
+        
+        // Update invulnerability state
+        if (this.isInvulnerable) {
+            const timeSinceDamage = now - this.lastDamageTime;
+            if (timeSinceDamage >= this.invulnerabilityDuration) {
+                this.isInvulnerable = false;
+                // Ensure model is visible when invulnerability ends
+                if (this.model) this.model.visible = true;
+            } else {
+                // Blink effect during invulnerability
+                if (this.model) {
+                    const blinkRate = 100; // Blink every 100ms
+                    this.model.visible = Math.floor(timeSinceDamage / blinkRate) % 2 === 0;
+                }
+            }
+        }
 
         // Update attack visual
         if (this.attackCircle && this.attackCircle.parent) {
@@ -261,14 +307,16 @@ export default class Player {
 
         // Continuous collision check during hop: enemies may have moved into our path
         // since move() validated the target. Without this, the toad can tunnel through them.
-        if (this.collisionRadius > 0) {
+        if (this.collisionRadius > 0 && !this.isInvulnerable) {
             for (const enemy of enemies) {
                 if (!enemy.model) continue;
                 const collision = checkCollision(
                     this.group.position, this.collisionRadius,
                     enemy.group.position, enemy.collisionRadius
                 );
-                if (collision) return true;
+                if (collision) {
+                    return this.takeDamage(1); // Returns true if player died
+                }
             }
         }
 
