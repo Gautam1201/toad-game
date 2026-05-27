@@ -132,8 +132,8 @@ function triggerGameOver() {
     isGameOver = true;
     if (gameOverElement) gameOverElement.style.display = 'block';
     player.group.visible = false;
-    // Clear input queue
-    inputQueue.length = 0;
+    // Clear held keys
+    keysPressed.clear();
 }
 
 function resetGame() {
@@ -152,6 +152,9 @@ function resetGame() {
     if (player.model) {
         player.model.position.z = player.baseZ;
     }
+
+    // Clear held keys
+    keysPressed.clear();
 
     // Reset score
     score = 0;
@@ -190,8 +193,8 @@ window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-// Input collection
-const inputQueue = [];
+// Input collection - Key state tracking for hold-to-move
+const keysPressed = new Set();
 
 // Map WASD to Arrow keys
 const keyMap = {
@@ -225,7 +228,8 @@ window.addEventListener('keydown', (event) => {
     
     // Check if it's a movement key (Arrow or WASD)
     if (keyMap[event.code]) {
-        inputQueue.push(keyMap[event.code]);
+        keysPressed.add(keyMap[event.code]);
+        event.preventDefault(); // Prevent browser scrolling
     } else if (event.code === 'Space') {
         const { kills, positions } = player.attack(enemies, scene, currentPlayerAttackRadius, currentPlayerAttackCooldown);
         if (kills > 0) {
@@ -234,6 +238,13 @@ window.addEventListener('keydown', (event) => {
                 floatingTexts.push(new FloatingText(scene, `+${SCORE_PER_KILL}`, pos));
             });
         }
+    }
+});
+
+// Track key releases for hold-to-move
+window.addEventListener('keyup', (event) => {
+    if (keyMap[event.code]) {
+        keysPressed.delete(keyMap[event.code]);
     }
 });
 
@@ -300,8 +311,9 @@ renderer.setAnimationLoop(() => {
         scoreElement.textContent = `Score: ${Math.floor(score)}`;
     }
 
-    if (!player.isMoving && inputQueue.length > 0) {
-        const nextMove = inputQueue.shift();
+    if (!player.isMoving && keysPressed.size > 0) {
+        // Use the most recently pressed key (last key wins)
+        const nextMove = Array.from(keysPressed).pop();
         if (player.move(nextMove, enemies, houses)) {
             triggerGameOver();
         }
