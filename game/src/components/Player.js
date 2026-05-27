@@ -56,8 +56,8 @@ export default class Player {
             this.baseZ = size.z / 2;
             this.model.position.z = this.baseZ;
 
-            // Use the average of width and depth for collision radius (more accurate for rounded characters)
-            this.collisionRadius = (size.x + size.y) / 4;
+            // Use the average of width and depth for collision radius, reduced for smaller hitbox
+            this.collisionRadius = (size.x + size.y) / 5; // Reduced from /4 to /5
             
             // Create shadow circle to visualize hitbox
             const shadowGeometry = new THREE.CircleGeometry(this.collisionRadius, 32);
@@ -78,7 +78,7 @@ export default class Player {
         this.group.position.set(0, 0, 0);
     }
 
-    move(dir, enemies = [], houses = []) {
+    move(dir, enemies = [], houses = [], fence = null, forest = null) {
         if (this.isMoving) return false;
 
         let direction = new THREE.Vector3();
@@ -88,6 +88,16 @@ export default class Player {
         if (dir === 'ArrowRight') direction.set(1, 0, 0);
 
         const targetPos = this.group.position.clone().addScaledVector(direction, JUMP_DISTANCE);
+
+        // Collision check with fence boundary
+        if (fence && fence.checkCollision(targetPos, this.collisionRadius)) {
+            return false; // Blocked by fence
+        }
+
+        // Collision check with trees
+        if (forest && forest.checkTreeCollision(targetPos, this.collisionRadius)) {
+            return false; // Blocked by tree
+        }
 
         // Collision check with enemies
         let triggeredGameOver = false;

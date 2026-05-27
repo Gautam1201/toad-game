@@ -7,9 +7,12 @@ import { createCamera } from './components/Camera.js';
 import { createRenderer } from './components/Renderer.js';
 import createMap from './components/Map.js';
 import House from './components/House.js';
+import Fence from './components/Fence.js';
+import Forest from './components/Forest.js';
 
 // Scene setup
 const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87CEEB); // Sky blue instead of white
 
 // Lighting
 const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
@@ -23,13 +26,17 @@ scene.add(directionalLight);
 const mapGroup = createMap();
 scene.add(mapGroup);
 
+// Fence boundary
+const fence = new Fence();
+scene.add(fence.group);
+
 // Houses
 // Rejection sampling: pick a random spot, reject if too close to the player spawn
 // (origin) or to any previously-placed house. The house's real collision radius is
 // only known after its GLB loads, so we use a conservative pre-known spacing.
 const houses = [];
-const HOUSE_COUNT = 3;
-const HOUSE_SPAWN_RANGE = 400;        // square half-width around origin
+const HOUSE_COUNT = 10; // More visual density for 2000x2000 map
+const HOUSE_SPAWN_RANGE = 400;        // Back to original for 1000x1000 map
 const MIN_HOUSE_SPACING = 180;        // > expected house footprint to leave walkable gaps
 const PLAYER_SPAWN_BUFFER = 120;      // keep origin clear so the toad never spawns inside
 const MAX_SPAWN_ATTEMPTS = 30;        // bounded retry: infeasible configs fail loud, not hang
@@ -61,6 +68,10 @@ for (let i = 0; i < HOUSE_COUNT; i++) {
     mapGroup.add(house.group);
 }
 
+// Forest background - created after houses so decorative trees can avoid them
+const forest = new Forest(houses);
+scene.add(forest.group);
+
 // Player
 const player = new Player();
 scene.add(player.group);
@@ -69,20 +80,22 @@ scene.add(player.group);
 const camera = createCamera();
 scene.add(camera);
 const cameraOffset = new THREE.Vector3(300, -300, 300);
+let inspectCameraPosition = new THREE.Vector3();
+const CAMERA_MOVE_SPEED = 10; // Units per frame in inspect mode
 
 // Enemies
 const enemies = [];
 const BASE_SPAWN_DELAY = 1000; // 1 second
 const BASE_MAX_ENEMIES = 10;
-const COMPLEXITY_GROWTH_FACTOR = 0.01; // Difficulty increase per score unit
+const COMPLEXITY_GROWTH_FACTOR = 0.005; // Slower difficulty increase (was 0.01)
 const SCALING_DELAY_SCORE = 100; // Delay scaling until score reaches this value
 let spawnTimer = 0;
 
 const spawnLocations = [
-    new THREE.Vector3(500, 500, 0),
-    new THREE.Vector3(-500, 500, 0),
-    new THREE.Vector3(500, -500, 0),
-    new THREE.Vector3(-500, -500, 0)
+    new THREE.Vector3(350, 350, 0),
+    new THREE.Vector3(-350, 350, 0),
+    new THREE.Vector3(350, -350, 0),
+    new THREE.Vector3(-350, -350, 0)
 ];
 
 // Base values for scaling
@@ -92,12 +105,12 @@ const BASE_ATTACK_COOLDOWN = 1000;
 const BASE_ATTACK_RADIUS = 50;
 
 // Max/Min limits for scaling
-const MIN_SPAWN_DELAY = 200;
-const MAX_MAX_ENEMIES = 50;
-const MAX_ENEMY_SPEED = 3.0;
-const MAX_PLAYER_SPEED = 5.0;
-const MIN_ATTACK_COOLDOWN = 200;
-const MAX_ATTACK_RADIUS = 150;
+const MIN_SPAWN_DELAY = 500;       // Slower spawn rate at max difficulty
+const MAX_MAX_ENEMIES = 20;        // Cap at 20 enemies instead of 50
+const MAX_ENEMY_SPEED = 1.8;       // Slower max speed (was 3.0)
+const MAX_PLAYER_SPEED = 4.0;      // Slightly slower max (was 5.0)
+const MIN_ATTACK_COOLDOWN = 400;   // Longer cooldown at max (was 200)
+const MAX_ATTACK_RADIUS = 100;     // Smaller max radius (was 150)
 
 // Current values
 let currentSpawnDelay = BASE_SPAWN_DELAY;
@@ -115,16 +128,54 @@ const SCORE_PER_KILL = 10;
 let score = 0;
 let isGameOver = false;
 let gameStarted = false;
+let inspectMode = false; // Developer inspect mode
 const floatingTexts = [];
 const clock = new THREE.Clock();
 const scoreElement = document.querySelector('.score');
 const gameOverElement = document.querySelector('.game-over');
 const startScreenElement = document.querySelector('.start-screen');
+const inspectModeElement = document.querySelector('.inspect-mode');
 
 function spawnEnemy() {
     if (isGameOver || enemies.length >= currentMaxEnemies) return;
-    const location = spawnLocations[Math.floor(Math.random() * spawnLocations.length)];
-    enemies.push(new Enemy(scene, player, location));
+    
+    // Try to find a valid spawn location that's not blocked
+    const maxAttempts = 10;
+    let spawnPos = null;
+    
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const location = spawnLocations[Math.floor(Math.random() * spawnLocations.length)];
+        
+        // Check if this location is blocked by houses
+        const blockedByHouse = houses.some(house => {
+            const distance = location.distanceTo(house.group.position);
+            return distance < 100; // Conservative check: 100 units clearance
+        });
+        
+        // Check if blocked by trees
+        const blockedByTree = forest.checkTreeCollision(location, 30);
+        
+        // Check if too close to player (at least 150 units away)
+        const tooCloseToPlayer = location.distanceTo(player.group.position) < 150;
+        
+        if (!blockedByHouse && !blockedByTree && !tooCloseToPlayer) {
+            spawnPos = location;
+            break;
+        }
+    }
+    
+    // If we couldn't find a valid spawn, use a fallback dynamic position
+    if (!spawnPos) {
+        const angle = Math.random() * Math.PI * 2;
+        const distance = 350;
+        spawnPos = new THREE.Vector3(
+            Math.cos(angle) * distance,
+            Math.sin(angle) * distance,
+            0
+        );
+    }
+    
+    enemies.push(new Enemy(scene, player, spawnPos));
 }
 
 function triggerGameOver() {
@@ -152,6 +203,11 @@ function resetGame() {
     if (player.model) {
         player.model.position.z = player.baseZ;
     }
+    
+    // Reset player shadow opacity
+    if (player.shadow) {
+        player.shadow.material.opacity = 0.3;
+    }
 
     // Clear held keys
     keysPressed.clear();
@@ -159,6 +215,15 @@ function resetGame() {
     // Reset score
     score = 0;
     if (scoreElement) scoreElement.textContent = `Score: 0`;
+    
+    // Reset difficulty parameters
+    currentSpawnDelay = BASE_SPAWN_DELAY;
+    currentMaxEnemies = BASE_MAX_ENEMIES;
+    currentEnemySpeed = BASE_ENEMY_SPEED;
+    currentPlayerSpeed = BASE_PLAYER_SPEED;
+    currentPlayerAttackCooldown = BASE_ATTACK_COOLDOWN;
+    currentPlayerAttackRadius = BASE_ATTACK_RADIUS;
+    spawnTimer = 0;
 
     // Clear enemies
     enemies.forEach(enemy => {
@@ -174,10 +239,47 @@ function resetGame() {
     });
     floatingTexts.length = 0;
 
-    // Respawn enemies at corners
-    spawnLocations.forEach(location => {
-        enemies.push(new Enemy(scene, player, location));
-    });
+    // Respawn enemies at corners with validation
+    for (let i = 0; i < spawnLocations.length; i++) {
+        const location = spawnLocations[i];
+        
+        // Check if this location is blocked by houses or trees
+        const blockedByHouse = houses.some(house => {
+            const distance = location.distanceTo(house.group.position);
+            return distance < 100; // Conservative check: 100 units clearance
+        });
+        
+        const blockedByTree = forest.checkTreeCollision(location, 30);
+        
+        // If blocked, find an alternative position nearby
+        let spawnPos = location;
+        if (blockedByHouse || blockedByTree) {
+            // Try offsets in different directions
+            const offsets = [
+                new THREE.Vector3(100, 0, 0),
+                new THREE.Vector3(-100, 0, 0),
+                new THREE.Vector3(0, 100, 0),
+                new THREE.Vector3(0, -100, 0),
+                new THREE.Vector3(70, 70, 0),
+                new THREE.Vector3(-70, 70, 0),
+                new THREE.Vector3(70, -70, 0),
+                new THREE.Vector3(-70, -70, 0)
+            ];
+            
+            for (const offset of offsets) {
+                const testPos = location.clone().add(offset);
+                const houseBlocked = houses.some(house => testPos.distanceTo(house.group.position) < 100);
+                const treeBlocked = forest.checkTreeCollision(testPos, 30);
+                
+                if (!houseBlocked && !treeBlocked) {
+                    spawnPos = testPos;
+                    break;
+                }
+            }
+        }
+        
+        enemies.push(new Enemy(scene, player, spawnPos));
+    }
 
     // Reset clock
     clock.getDelta();
@@ -218,6 +320,22 @@ window.addEventListener('keydown', (event) => {
     }
 
     if (!gameStarted) return;
+
+    // Toggle inspect mode (works even if game over)
+    if (event.code === 'KeyI') {
+        inspectMode = !inspectMode;
+        if (inspectModeElement) {
+            inspectModeElement.style.display = inspectMode ? 'block' : 'none';
+        }
+        
+        // Store camera position when entering inspect mode
+        if (inspectMode) {
+            inspectCameraPosition.copy(camera.position);
+        }
+        
+        console.log('Inspect Mode:', inspectMode ? 'ON' : 'OFF');
+        return;
+    }
 
     if (isGameOver) {
         if (event.code === 'Space') {
@@ -281,14 +399,16 @@ renderer.setAnimationLoop(() => {
         return;
     }
 
-    // Update score based on survival time
-    score += deltaTime * SCORE_PER_SECOND;
+    // Update score based on survival time (pause score in inspect mode)
+    if (!inspectMode) {
+        score += deltaTime * SCORE_PER_SECOND;
+    }
 
     // Difficulty scaling logic
     const difficultyFactor = Math.max(0, score - SCALING_DELAY_SCORE) * COMPLEXITY_GROWTH_FACTOR;
     
-    // Enemy parameters scale slightly faster (factor 1.5 for example)
-    const enemyScalingFactor = difficultyFactor * 1.5;
+    // Enemy and player parameters scale at similar rates now
+    const enemyScalingFactor = difficultyFactor * 1.0;  // Reduced from 1.5 to 1.0
     const playerScalingFactor = difficultyFactor;
 
     currentSpawnDelay = Math.max(MIN_SPAWN_DELAY, BASE_SPAWN_DELAY / (1 + enemyScalingFactor));
@@ -299,11 +419,13 @@ renderer.setAnimationLoop(() => {
     currentPlayerAttackCooldown = Math.max(MIN_ATTACK_COOLDOWN, BASE_ATTACK_COOLDOWN / (1 + playerScalingFactor));
     currentPlayerAttackRadius = Math.min(MAX_ATTACK_RADIUS, BASE_ATTACK_RADIUS * (1 + playerScalingFactor * 0.2));
 
-    // Enemy spawning with accumulated timer
-    spawnTimer += deltaTime * 1000; // convert to ms
-    if (spawnTimer >= currentSpawnDelay) {
-        spawnEnemy();
-        spawnTimer = 0;
+    // Enemy spawning with accumulated timer (disabled in inspect mode)
+    if (!inspectMode) {
+        spawnTimer += deltaTime * 1000; // convert to ms
+        if (spawnTimer >= currentSpawnDelay) {
+            spawnEnemy();
+            spawnTimer = 0;
+        }
     }
     
     // Update UI
@@ -311,24 +433,60 @@ renderer.setAnimationLoop(() => {
         scoreElement.textContent = `Score: ${Math.floor(score)}`;
     }
 
-    if (!player.isMoving && keysPressed.size > 0) {
-        // Use the most recently pressed key (last key wins)
-        const nextMove = Array.from(keysPressed).pop();
-        if (player.move(nextMove, enemies, houses)) {
-            triggerGameOver();
+    // In inspect mode: move camera with WASD/arrows, otherwise move player
+    if (inspectMode) {
+        // Camera movement in inspect mode
+        if (keysPressed.size > 0) {
+            keysPressed.forEach(direction => {
+                if (direction === 'ArrowUp') {
+                    inspectCameraPosition.y += CAMERA_MOVE_SPEED;
+                } else if (direction === 'ArrowDown') {
+                    inspectCameraPosition.y -= CAMERA_MOVE_SPEED;
+                } else if (direction === 'ArrowLeft') {
+                    inspectCameraPosition.x -= CAMERA_MOVE_SPEED;
+                } else if (direction === 'ArrowRight') {
+                    inspectCameraPosition.x += CAMERA_MOVE_SPEED;
+                }
+            });
         }
+        
+        // Smooth camera movement in inspect mode
+        camera.position.lerp(inspectCameraPosition.clone().add(cameraOffset), 0.1);
+        
+        // Calculate lookAt point (where camera is centered)
+        const lookAtPoint = inspectCameraPosition.clone();
+        camera.lookAt(lookAtPoint);
+    } else {
+        // Normal mode: player movement and camera follows player
+        if (!player.isMoving && keysPressed.size > 0) {
+            // Use the most recently pressed key (last key wins)
+            const nextMove = Array.from(keysPressed).pop();
+            const collision = player.move(nextMove, enemies, houses, fence, forest);
+            // Only trigger game over if not in inspect mode
+            if (collision) {
+                triggerGameOver();
+            }
+        }
+
+        // Smooth camera follow player
+        const targetCameraPos = player.group.position.clone().add(cameraOffset);
+        camera.position.lerp(targetCameraPos, 0.05);
+        camera.lookAt(player.group.position);
     }
 
-    // player.update now returns true if a mid-hop collision with an enemy occurred.
-    if (player.update(deltaTime, currentPlayerSpeed, currentPlayerAttackCooldown, currentPlayerAttackRadius, enemies)) {
+    // player.update for visual updates (collision damage disabled in inspect mode)
+    const playerCollision = player.update(deltaTime, currentPlayerSpeed, currentPlayerAttackCooldown, currentPlayerAttackRadius, enemies);
+    if (playerCollision && !inspectMode) {
         triggerGameOver();
     }
 
-    // Update enemies
-    for (const enemy of enemies) {
-        if (enemy.update(deltaTime, enemies, currentEnemySpeed, houses)) {
-            triggerGameOver();
-            break;
+    // Update enemies (frozen in inspect mode)
+    if (!inspectMode) {
+        for (const enemy of enemies) {
+            if (enemy.update(deltaTime, enemies, currentEnemySpeed, houses, fence, forest)) {
+                triggerGameOver();
+                break;
+            }
         }
     }
 
@@ -338,11 +496,6 @@ renderer.setAnimationLoop(() => {
             floatingTexts.splice(i, 1);
         }
     }
-
-    // Smooth camera follow
-    const targetCameraPos = player.group.position.clone().add(cameraOffset);
-    camera.position.lerp(targetCameraPos, 0.05);
-    camera.lookAt(player.group.position);
 
     renderer.render(scene, camera);
 });

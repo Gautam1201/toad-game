@@ -59,7 +59,7 @@ export default class Enemy {
         });
     }
 
-    update(deltaTime, allEnemies = [], speed = ENEMY_SPEED, houses = []) {
+    update(deltaTime, allEnemies = [], speed = ENEMY_SPEED, houses = [], fence = null, forest = null) {
         if (!this.model) return false;
 
         // Hovering animation (subtle up and down motion)
@@ -91,6 +91,21 @@ export default class Enemy {
 
         for (const attemptDir of attemptDirections) {
             const nextPosition = this.group.position.clone().addScaledVector(attemptDir, stepDistance);
+
+            // Collision check with fence boundary
+            if (fence && fence.checkCollision(nextPosition, this.collisionRadius)) {
+                continue; // Try next direction
+            }
+
+            // Collision check with trees
+            if (forest && forest.checkTreeCollision(nextPosition, this.collisionRadius)) {
+                continue; // Try next direction
+            }
+            
+            // Collision check with decorative trees (enemies only)
+            if (forest && forest.checkDecorativeTreeCollision(nextPosition, this.collisionRadius)) {
+                continue; // Try next direction
+            }
 
             // Collision check with player
             const collidesWithPlayer = checkCollision(
