@@ -60,7 +60,7 @@ npm run build
 npm run preview
 ```
 
-The game will be available at `http://localhost:5173` (or the port shown in your terminal).
+The game will be available at `http://localhost:5173`
 
 ### Deploying to GitHub Pages
 
