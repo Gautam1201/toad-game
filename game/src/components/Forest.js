@@ -204,7 +204,7 @@ export default class Forest {
 
     loadForestModel() {
         // Load Forest.glb and create dense forest coverage outside the fence
-        this.loader.load('/models/Forest.glb', (gltf) => {
+        this.loader.load(`${import.meta.env.BASE_URL}models/Forest.glb`, (gltf) => {
             const forestModel = gltf.scene;
             
             console.log('Forest model loaded successfully - creating dense forest ring');

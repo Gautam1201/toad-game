@@ -22,7 +22,7 @@ export default class Enemy {
         this.group.position.copy(spawnPosition);
         this.scene.add(this.group);
 
-        this.loader.load('/models/enemy.glb', (gltf) => {
+        this.loader.load(`${import.meta.env.BASE_URL}models/enemy.glb`, (gltf) => {
             this.model = gltf.scene;
             
             // Set rotation

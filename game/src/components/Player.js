@@ -65,7 +65,7 @@ export default class Player {
         // Shadow to show hitbox
         this.shadow = null;
         
-        this.loader.load('/models/tode.glb', (gltf) => {
+        this.loader.load(`${import.meta.env.BASE_URL}models/tode.glb`, (gltf) => {
             this.model = gltf.scene;
             
             // Set rotation

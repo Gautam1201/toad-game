@@ -13,7 +13,7 @@ export default class House {
         this.group.position.copy(position);
         this.scene.add(this.group);
 
-        this.loader.load('/models/small_house.glb', (gltf) => {
+        this.loader.load(`${import.meta.env.BASE_URL}models/small_house.glb`, (gltf) => {
             this.model = gltf.scene;
             
             // Scale the model
