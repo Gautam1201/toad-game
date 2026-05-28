@@ -42,6 +42,18 @@ export default class Player {
         this.invulnerabilityDuration = 1000; // 1 second of invulnerability after taking damage
         this.lastDamageTime = 0;
         
+        // Power-up effects
+        this.activeEffects = {
+            speedBoost: false,
+            attackRangeBoost: false,
+            invincibilityShield: false
+        };
+        this.effectTimers = {
+            speedBoost: 0,
+            attackRangeBoost: 0,
+            invincibilityShield: 0
+        };
+        
         // Shadow to show hitbox
         this.shadow = null;
         
@@ -205,8 +217,8 @@ export default class Player {
     }
     
     takeDamage(amount = 1) {
-        // Can't take damage if invulnerable
-        if (this.isInvulnerable) return false;
+        // Can't take damage if invulnerable or has shield
+        if (this.isInvulnerable || this.isShielded()) return false;
         
         this.currentHealth -= amount;
         this.lastDamageTime = Date.now();
@@ -222,10 +234,58 @@ export default class Player {
             max: this.maxHealth
         };
     }
+    
+    // Power-up methods
+    applyHealthPack() {
+        if (this.currentHealth < this.maxHealth) {
+            this.currentHealth = Math.min(this.currentHealth + 1, this.maxHealth);
+            return true; // Successfully used
+        }
+        return false; // Health already full
+    }
+    
+    applySpeedBoost(duration = 10000) {
+        this.activeEffects.speedBoost = true;
+        this.effectTimers.speedBoost = duration;
+    }
+    
+    applyAttackRangeBoost(duration = 10000) {
+        this.activeEffects.attackRangeBoost = true;
+        this.effectTimers.attackRangeBoost = duration;
+    }
+    
+    applyInvincibilityShield(duration = 5000) {
+        this.activeEffects.invincibilityShield = true;
+        this.effectTimers.invincibilityShield = duration;
+    }
+    
+    getSpeedMultiplier() {
+        return this.activeEffects.speedBoost ? 1.5 : 1.0;
+    }
+    
+    getAttackRangeMultiplier() {
+        return this.activeEffects.attackRangeBoost ? 1.5 : 1.0;
+    }
+    
+    isShielded() {
+        return this.activeEffects.invincibilityShield;
+    }
 
     update(deltaTime, moveSpeed = MOVE_SPEED, attackCooldown = ATTACK_COOLDOWN, attackRadius = ATTACK_RADIUS, enemies = []) {
         const now = Date.now();
         const cooldownElapsed = now - this.lastAttackTime;
+        const deltaTimeMs = deltaTime * 1000;
+        
+        // Update power-up effect timers
+        for (const effect in this.effectTimers) {
+            if (this.activeEffects[effect]) {
+                this.effectTimers[effect] -= deltaTimeMs;
+                if (this.effectTimers[effect] <= 0) {
+                    this.activeEffects[effect] = false;
+                    this.effectTimers[effect] = 0;
+                }
+            }
+        }
         
         // Update invulnerability state
         if (this.isInvulnerable) {

@@ -4,17 +4,16 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/tode.svg" />
     <meta name="viewport" content="width=device-width" />
-    <title>Toad's Life</title>
+    <title>Tode's Life</title>
   </head>
   <body>
     <div class="start-screen">
       <div class="start-content">
-        <h1>🐸 TOAD'S LIFE</h1>
+        <h1>🐸 TODE'S LIFE</h1>
         <div class="instructions">
           <h2>How to Play</h2>
-          <p><strong>Arrow Keys / WASD</strong> - Move Tode</p>
-          <p><strong>Spacebar</strong> - Attack nearby enemies</p>
-          <p><strong>Goal</strong> - Survive as long as possible!</p>
+          <p><span class="key-label">Arrow Keys / WASD</span> &nbsp;Move Tode</p>
+          <p><span class="key-label">Spacebar</span> &nbsp;Attack nearby enemies</p>
         </div>
         <div class="scoring">
           <h3>Scoring</h3>
@@ -25,17 +24,19 @@
       </div>
     </div>
     <div class="score">Score: 0</div>
-    <div class="pause-button-ui">⏸️</div>
+    <div class="pause-button-ui">⏸</div>
     <div class="health-bar"></div>
+    <div class="powerup-status"></div>
+    <div class="powerup-arrows"></div>
     <div class="inspect-mode" style="display: none;">🔍 INSPECT MODE - WASD/Arrows: Move Camera | I: Toggle</div>
     <div class="pause-menu" style="display: none;">
       <div class="pause-content">
-        <h1>⏸️ PAUSED</h1>
+        <h1>⏸ PAUSED</h1>
         <div class="pause-controls">
           <h2>Controls</h2>
           <div class="control-group">
             <span class="control-key">Arrow Keys / WASD</span>
-            <span class="control-description">Move Toad</span>
+            <span class="control-description">Move Tode</span>
           </div>
           <div class="control-group">
             <span class="control-key">Spacebar</span>
@@ -53,10 +54,7 @@
         <div class="pause-button">Press ESC or Click to Resume</div>
       </div>
     </div>
-    <div class="game-over" style="display: none;">
-      <h1>GAME OVER</h1>
-      <p>Press SPACE or Click to Reset</p>
-    </div>
+    <div class="game-over" style="display: none;"></div>
     <canvas class="game"></canvas>
     <script type="module" src="/src/main.js"></script>
   </body>
