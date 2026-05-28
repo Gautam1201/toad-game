@@ -92,10 +92,8 @@ export default class Enemy {
         for (const attemptDir of attemptDirections) {
             const nextPosition = this.group.position.clone().addScaledVector(attemptDir, stepDistance);
 
-            // Collision check with fence boundary
-            if (fence && fence.checkCollision(nextPosition, this.collisionRadius)) {
-                continue; // Try next direction
-            }
+            // Fence only constrains the player - enemies walk through it from outside
+            // Skip fence check so enemies spawned outside can enter the playable area
 
             // Collision check with trees
             if (forest && forest.checkTreeCollision(nextPosition, this.collisionRadius)) {
