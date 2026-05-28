@@ -12,7 +12,7 @@ A fully-featured 3D survival game built with Three.js, featuring dynamic difficu
 
 ## 🎯 Play Now
 
-**[Play Toad's Life](https://Gautam1201.github.io/Toad-game/)** - Live demo hosted on GitHub Pages
+**[Play Toad's Life](https://gautam1201.github.io/toad-game/)** - Live demo hosted on GitHub Pages
 
 ## 🎮 Game Features
 
