@@ -10,6 +10,10 @@ A fully-featured 3D survival game built with Three.js, featuring dynamic difficu
 
 > Built as part of the JetBrains Academy course "Build a Game with an AI Coding Agent" - a project-based learning experience using AI coding agents inside WebStorm.
 
+## 🎯 Play Now
+
+**[Play Toad's Life](https://Gautam1201.github.io/Toad-game/)** - Live demo hosted on GitHub Pages
+
 ## 🎮 Game Features
 
 - **3D Graphics**: Fully rendered 3D world using Three.js and WebGL
@@ -57,6 +61,20 @@ npm run preview
 ```
 
 The game will be available at `http://localhost:5173` (or the port shown in your terminal).
+
+### Deploying to GitHub Pages
+
+The game is automatically deployed to GitHub Pages when you push to the main branch.
+
+**Manual deployment:**
+
+```bash
+cd game
+npm run build
+# The built files will be in game/dist/
+```
+
+The GitHub Actions workflow (`.github/workflows/deploy.yml`) handles automatic deployment. 
 
 ## 🕹️ How to Play
 
