@@ -4,6 +4,7 @@ import Player from './components/Player.js';
 import Enemy from './components/Enemy.js';
 import FloatingText from './components/FloatingText.js';
 import PowerUp, { PowerUpType } from './components/PowerUp.js';
+import SmokeParticle from './components/SmokeParticle.js';
 import { createCamera } from './components/Camera.js';
 import { createRenderer } from './components/Renderer.js';
 import createMap from './components/Map.js';
@@ -11,11 +12,9 @@ import House from './components/House.js';
 import Fence from './components/Fence.js';
 import Forest from './components/Forest.js';
 
-// Scene setup
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87CEEB); // Sky blue instead of white
+scene.background = new THREE.Color(0x87CEEB);
 
-// Lighting
 const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
 scene.add(ambientLight);
 
@@ -23,24 +22,20 @@ const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
 directionalLight.position.set(-100, -100, 200);
 scene.add(directionalLight);
 
-// Map
 const mapGroup = createMap();
 scene.add(mapGroup);
 
-// Fence boundary
 const fence = new Fence();
 scene.add(fence.group);
 
-// Houses
-// Rejection sampling: pick a random spot, reject if too close to the player spawn
-// (origin) or to any previously-placed house. The house's real collision radius is
-// only known after its GLB loads, so we use a conservative pre-known spacing.
+// Rejection sampling for house placement: reject positions too close to origin or existing houses.
+// Conservative fixed spacing because actual collision radius is only known after GLB loads.
 const houses = [];
-const HOUSE_COUNT = 10; // More visual density for 2000x2000 map
-const HOUSE_SPAWN_RANGE = 400;        // Back to original for 1000x1000 map
-const MIN_HOUSE_SPACING = 180;        // > expected house footprint to leave walkable gaps
-const PLAYER_SPAWN_BUFFER = 120;      // keep origin clear so the toad never spawns inside
-const MAX_SPAWN_ATTEMPTS = 30;        // bounded retry: infeasible configs fail loud, not hang
+const HOUSE_COUNT = 10;
+const HOUSE_SPAWN_RANGE = 400;
+const MIN_HOUSE_SPACING = 180;
+const PLAYER_SPAWN_BUFFER = 120;
+const MAX_SPAWN_ATTEMPTS = 30;
 
 function findHouseSpawnPosition(existing) {
     for (let attempt = 0; attempt < MAX_SPAWN_ATTEMPTS; attempt++) {
@@ -69,67 +64,60 @@ for (let i = 0; i < HOUSE_COUNT; i++) {
     mapGroup.add(house.group);
 }
 
-// Forest background - created after houses so decorative trees can avoid them
+// Forest is created after houses so trees avoid overlapping them
 const forest = new Forest(houses);
 scene.add(forest.group);
 
-// Player
 const player = new Player();
 scene.add(player.group);
 
-// Camera
 const camera = createCamera();
 scene.add(camera);
 const cameraOffset = new THREE.Vector3(300, -300, 300);
 let inspectCameraPosition = new THREE.Vector3();
-const CAMERA_MOVE_SPEED = 10; // Units per frame in inspect mode
+const CAMERA_MOVE_SPEED = 10;
 
-// Enemies
+let cameraShakeIntensity = 0;
+let cameraShakeDuration = 0;
+const CAMERA_SHAKE_MAX_INTENSITY = 15;
+const CAMERA_SHAKE_DURATION = 500;
+
 const enemies = [];
-const BASE_SPAWN_DELAY = 1000; // 1 second
+const BASE_SPAWN_DELAY = 1000;
 const BASE_MAX_ENEMIES = 10;
-const COMPLEXITY_GROWTH_FACTOR = 0.005; // Slower difficulty increase (was 0.01)
-const SCALING_DELAY_SCORE = 100; // Delay scaling until score reaches this value
+const COMPLEXITY_GROWTH_FACTOR = 0.005;
+const SCALING_DELAY_SCORE = 100;
 let spawnTimer = 0;
 
-// Enemy spawn points: distributed within the inner forest ring (~580–620 radius)
-// so enemies appear to emerge from between the trees
+// Spawn points distributed around the inner forest ring so enemies emerge from the trees
 const SPAWN_FOREST_MIN = 560;
 const SPAWN_FOREST_MAX = 630;
-const SPAWN_COUNT = 40; // Number of spawn points spread around the ring
+const SPAWN_COUNT = 40;
 
 function buildSpawnLocations() {
     const pts = [];
     for (let i = 0; i < SPAWN_COUNT; i++) {
         const angle = (i / SPAWN_COUNT) * Math.PI * 2;
-        // Vary radius slightly per point so they're scattered inside the tree ring
         const radius = SPAWN_FOREST_MIN + Math.random() * (SPAWN_FOREST_MAX - SPAWN_FOREST_MIN);
-        pts.push(new THREE.Vector3(
-            Math.cos(angle) * radius,
-            Math.sin(angle) * radius,
-            0
-        ));
+        pts.push(new THREE.Vector3(Math.cos(angle) * radius, Math.sin(angle) * radius, 0));
     }
     return pts;
 }
 const spawnLocations = buildSpawnLocations();
 let lastSpawnIndex = -1;
 
-// Base values for scaling
 const BASE_ENEMY_SPEED = 0.7;
 const BASE_PLAYER_SPEED = 2.5;
 const BASE_ATTACK_COOLDOWN = 1000;
 const BASE_ATTACK_RADIUS = 50;
 
-// Max/Min limits for scaling
-const MIN_SPAWN_DELAY = 500;       // Slower spawn rate at max difficulty
-const MAX_MAX_ENEMIES = 20;        // Cap at 20 enemies instead of 50
-const MAX_ENEMY_SPEED = 1.8;       // Slower max speed (was 3.0)
-const MAX_PLAYER_SPEED = 4.0;      // Slightly slower max (was 5.0)
-const MIN_ATTACK_COOLDOWN = 400;   // Longer cooldown at max (was 200)
-const MAX_ATTACK_RADIUS = 100;     // Smaller max radius (was 150)
+const MIN_SPAWN_DELAY = 500;
+const MAX_MAX_ENEMIES = 20;
+const MAX_ENEMY_SPEED = 1.8;
+const MAX_PLAYER_SPEED = 4.0;
+const MIN_ATTACK_COOLDOWN = 400;
+const MAX_ATTACK_RADIUS = 100;
 
-// Current values
 let currentSpawnDelay = BASE_SPAWN_DELAY;
 let currentMaxEnemies = BASE_MAX_ENEMIES;
 let currentEnemySpeed = BASE_ENEMY_SPEED;
@@ -137,18 +125,16 @@ let currentPlayerSpeed = BASE_PLAYER_SPEED;
 let currentPlayerAttackCooldown = BASE_ATTACK_COOLDOWN;
 let currentPlayerAttackRadius = BASE_ATTACK_RADIUS;
 
-// Scoring constants
 const SCORE_PER_SECOND = 0.1;
 const SCORE_PER_KILL = 10;
 
-// Power-ups
 const powerUps = [];
-const POWERUP_SPAWN_BASE_INTERVAL = 8000; // Base 8 seconds (reduced from 15)
-const POWERUP_SPAWN_VARIANCE = 4000; // +/- 4 seconds randomization
+const POWERUP_SPAWN_BASE_INTERVAL = 8000;
+const POWERUP_SPAWN_VARIANCE = 4000;
 let powerUpSpawnTimer = 0;
 let nextPowerUpSpawnDelay = POWERUP_SPAWN_BASE_INTERVAL;
 
-// Power-up spawn limits - max of each type on map at once
+// Max instances of each power-up type allowed on the map simultaneously
 const MAX_POWERUPS_PER_TYPE = {
     [PowerUpType.HEALTH]: 3,
     [PowerUpType.SPEED]: 2,
@@ -161,69 +147,41 @@ function countPowerUpsByType(type) {
 }
 
 function getRandomPowerUpInterval() {
-    // Randomize spawn time: 4-12 seconds (8 ± 4)
     return POWERUP_SPAWN_BASE_INTERVAL + (Math.random() - 0.5) * 2 * POWERUP_SPAWN_VARIANCE;
 }
 
 function spawnPowerUp() {
-    // Build list of available power-up types (not at max limit)
+    // Weight health drops higher (3 entries ≈ 35%) vs others (2 entries ≈ 25%/20%/20%)
     const availableTypes = [];
-    
-    if (countPowerUpsByType(PowerUpType.HEALTH) < MAX_POWERUPS_PER_TYPE[PowerUpType.HEALTH]) {
-        // Health pack gets multiple entries for higher probability (35%)
+    if (countPowerUpsByType(PowerUpType.HEALTH) < MAX_POWERUPS_PER_TYPE[PowerUpType.HEALTH])
         availableTypes.push(PowerUpType.HEALTH, PowerUpType.HEALTH, PowerUpType.HEALTH);
-    }
-    if (countPowerUpsByType(PowerUpType.SPEED) < MAX_POWERUPS_PER_TYPE[PowerUpType.SPEED]) {
-        // Speed boost (25%)
+    if (countPowerUpsByType(PowerUpType.SPEED) < MAX_POWERUPS_PER_TYPE[PowerUpType.SPEED])
         availableTypes.push(PowerUpType.SPEED, PowerUpType.SPEED);
-    }
-    if (countPowerUpsByType(PowerUpType.ATTACK_RANGE) < MAX_POWERUPS_PER_TYPE[PowerUpType.ATTACK_RANGE]) {
-        // Attack range (20%)
+    if (countPowerUpsByType(PowerUpType.ATTACK_RANGE) < MAX_POWERUPS_PER_TYPE[PowerUpType.ATTACK_RANGE])
         availableTypes.push(PowerUpType.ATTACK_RANGE, PowerUpType.ATTACK_RANGE);
-    }
-    if (countPowerUpsByType(PowerUpType.INVINCIBILITY) < MAX_POWERUPS_PER_TYPE[PowerUpType.INVINCIBILITY]) {
-        // Invincibility (20%)
+    if (countPowerUpsByType(PowerUpType.INVINCIBILITY) < MAX_POWERUPS_PER_TYPE[PowerUpType.INVINCIBILITY])
         availableTypes.push(PowerUpType.INVINCIBILITY, PowerUpType.INVINCIBILITY);
-    }
-    
-    // If no types available (all at max), don't spawn
-    if (availableTypes.length === 0) {
-        console.log('All power-up types at max limit, skipping spawn');
-        return;
-    }
-    
-    // Randomly select from available types
+
+    if (availableTypes.length === 0) return;
+
     const type = availableTypes[Math.floor(Math.random() * availableTypes.length)];
-    
-    const tileSize = 50; // Map tile size
-    
-    // Find a valid spawn location snapped to tile edges/corners (grid intersections)
-    const maxAttempts = 30;
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        // Generate random position within playable area
-        const randomX = (Math.random() - 0.5) * 800;
-        const randomY = (Math.random() - 0.5) * 800;
-        
-        // Snap to nearest grid intersection (tile edges/corners)
-        const x = Math.round(randomX / tileSize) * tileSize;
-        const y = Math.round(randomY / tileSize) * tileSize;
+    const tileSize = 50;
+
+    for (let attempt = 0; attempt < 30; attempt++) {
+        const x = Math.round(((Math.random() - 0.5) * 800) / tileSize) * tileSize;
+        const y = Math.round(((Math.random() - 0.5) * 800) / tileSize) * tileSize;
         const pos = new THREE.Vector3(x, y, 0);
-        
-        // Check if location is valid (not too close to houses, trees, enemies, or player)
-        const tooCloseToHouse = houses.some(house => pos.distanceTo(house.group.position) < 100);
+
+        const tooCloseToHouse = houses.some(h => pos.distanceTo(h.group.position) < 100);
         const tooCloseToTree = forest && forest.checkTreeCollision(pos, 30);
         const tooCloseToPlayer = pos.distanceTo(player.group.position) < 100;
-        const tooCloseToEnemy = enemies.some(enemy => pos.distanceTo(enemy.group.position) < 80);
-        
+        const tooCloseToEnemy = enemies.some(e => pos.distanceTo(e.group.position) < 80);
+
         if (!tooCloseToHouse && !tooCloseToTree && !tooCloseToPlayer && !tooCloseToEnemy) {
-            const powerUp = new PowerUp(scene, pos, type);
-            powerUps.push(powerUp);
-            console.log(`Spawned ${type} power-up at`, pos);
+            powerUps.push(new PowerUp(scene, pos, type));
             return;
         }
     }
-    
-    console.warn('Could not find valid power-up spawn location');
 }
 
 // Scoring state
@@ -232,9 +190,11 @@ let enemiesKilled = 0;
 let gameStartTime = 0;
 let isGameOver = false;
 let gameStarted = false;
-let isPaused = false; // Pause state
-let inspectMode = false; // Developer inspect mode
+let isPaused = false;
+const DEV_MODE = false; // Set true locally to enable inspect camera
+let inspectMode = false;
 const floatingTexts = [];
+const smokeParticles = [];
 
 // High score system
 const HIGH_SCORE_KEY = 'todes_life_high_score';
@@ -255,12 +215,24 @@ const clock = new THREE.Clock();
 let lastPlayerHealth = 3; // Track health to detect damage
 const scoreElement = document.querySelector('.score');
 const healthBarElement = document.querySelector('.health-bar');
+const specialAttackUI = document.querySelector('.special-attack-ui');
+const specialAttackFill = document.querySelector('.special-attack-fill');
 const powerupStatusElement = document.querySelector('.powerup-status');
 const powerupArrowsElement = document.querySelector('.powerup-arrows');
 const gameOverElement = document.querySelector('.game-over');
 const startScreenElement = document.querySelector('.start-screen');
 const inspectModeElement = document.querySelector('.inspect-mode');
 const pauseMenuElement = document.querySelector('.pause-menu');
+
+if (DEV_MODE) {
+    const pauseControls = document.querySelector('.pause-controls');
+    if (pauseControls) {
+        const devGroup = document.createElement('div');
+        devGroup.className = 'control-group';
+        devGroup.innerHTML = '<span class="control-key">I</span><span class="control-description">Inspect Mode (Dev)</span>';
+        pauseControls.appendChild(devGroup);
+    }
+}
 const pauseButtonUI = document.querySelector('.pause-button-ui');
 
 // Inject high score display into start screen
@@ -283,6 +255,16 @@ function updateStartScreenHighScore() {
 
 // Initialize high score display on load
 updateStartScreenHighScore();
+
+function dismissStartScreen(callback) {
+    if (!startScreenElement) { callback(); return; }
+    startScreenElement.classList.add('exiting');
+    setTimeout(() => {
+        startScreenElement.style.display = 'none';
+        startScreenElement.classList.remove('exiting');
+        callback();
+    }, 350);
+}
 
 function showSurviveStrip() {
     const strip = document.createElement('div');
@@ -340,6 +322,20 @@ function shakeHealthBar() {
     }
 }
 
+function updateSpecialAttackUI() {
+    if (!specialAttackFill || !specialAttackUI) return;
+    
+    const progress = player.getSpecialAttackProgress();
+    specialAttackFill.style.width = `${progress * 100}%`;
+    
+    // Add pulsing effect when ready
+    if (progress >= 1) {
+        specialAttackUI.classList.add('ready');
+    } else {
+        specialAttackUI.classList.remove('ready');
+    }
+}
+
 const POWERUP_CONFIG = {
     health:       { icon: '❤️',  color: '#ff4444', label: 'HEALTH' },
     speed:        { icon: '⚡',  color: '#ffd700', label: 'SPEED'  },
@@ -368,9 +364,11 @@ function updatePowerupArrows() {
         const onScreen = sx > 0 && sx < W && sy > 0 && sy < H && pos3D.z < 1;
         if (onScreen) return;
 
-        // Clamp to screen edges to get arrow position
+        // When the power-up is behind the camera (pos3D.z >= 1), the projected
+        // NDC coordinates are mirrored — negate to get the true screen direction.
         const cx = W / 2, cy = H / 2;
-        const dx = sx - cx, dy = sy - cy;
+        let dx = sx - cx, dy = sy - cy;
+        if (pos3D.z >= 1) { dx = -dx; dy = -dy; }
         const angle = Math.atan2(dy, dx);
 
         // Find edge intersection
@@ -481,48 +479,68 @@ function triggerGameOver() {
     if (isGameOver) return;
     isGameOver = true;
     
-    // Calculate game stats
-    const timeSurvived = Math.floor((Date.now() - gameStartTime) / 1000); // seconds
+    const timeSurvived = Math.floor((Date.now() - gameStartTime) / 1000);
     const finalScore = Math.floor(score);
     const previousHighScore = getHighScore();
     const isNewHigh = isNewHighScore(finalScore);
     
-    // Save high score if achieved
-    if (isNewHigh) {
-        setHighScore(finalScore);
-    }
+    if (isNewHigh) setHighScore(finalScore);
     
-    // Update game over screen with stats
     if (gameOverElement) {
-        const highScoreHTML = isNewHigh 
+        const highScoreHTML = isNewHigh
             ? `<div class="new-high-score-badge">🎉 NEW HIGH SCORE! 🎉</div>`
             : `<div class="high-score-display">High Score: ${previousHighScore}</div>`;
         
+        // Phase 1: show header only
         gameOverElement.innerHTML = `
             <div class="game-over-content">
                 <h1><img src="/tode.svg" class="game-over-tode-icon" alt="Tode"/> GAME OVER</h1>
                 ${highScoreHTML}
-                <div class="stat-item-hero">
-                    <span class="stat-label">Final Score</span>
-                    <span class="stat-value">${finalScore}</span>
-                </div>
-                <div class="game-stats">
-                    <div class="stat-item">
-                        <span class="stat-label">Enemies Defeated</span>
-                        <span class="stat-value">⚔️ ${enemiesKilled}</span>
+                <div class="game-over-stats-wrap" style="opacity:0; transform:translateY(20px); transition: opacity 0.4s ease 0s, transform 0.4s ease 0s;">
+                    <div class="stat-item-hero">
+                        <span class="stat-label">Final Score</span>
+                        <span class="stat-value">${finalScore}</span>
                     </div>
-                    <div class="stat-item">
-                        <span class="stat-label">Time Survived</span>
-                        <span class="stat-value">⏱ ${Math.floor(timeSurvived / 60)}:${String(timeSurvived % 60).padStart(2, '0')}</span>
+                    <div class="game-stats">
+                        <div class="stat-item">
+                            <span class="stat-label">Enemies Defeated</span>
+                            <span class="stat-value">⚔️ ${enemiesKilled}</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Time Survived</span>
+                            <span class="stat-value">⏱ ${Math.floor(timeSurvived / 60)}:${String(timeSurvived % 60).padStart(2, '0')}</span>
+                        </div>
                     </div>
+                    <div class="restart-button" style="opacity:0; pointer-events:none;">Press SPACE or Click to Restart</div>
                 </div>
-                <div class="restart-button">Press SPACE or Click to Restart</div>
             </div>
         `;
         gameOverElement.style.display = 'flex';
+        requestAnimationFrame(() => gameOverElement.classList.add('entering'));
+        
+        // Phase 2: reveal stats after the panel has slid in
+        setTimeout(() => {
+            const wrap = gameOverElement.querySelector('.game-over-stats-wrap');
+            if (wrap) {
+                wrap.style.opacity = '1';
+                wrap.style.transform = 'translateY(0)';
+            }
+        }, 500);
+        
+        // Phase 3: reveal restart button and unlock input after an additional pause
+        setTimeout(() => {
+            const btn = gameOverElement.querySelector('.restart-button');
+            if (btn) {
+                btn.style.opacity = '1';
+                btn.style.pointerEvents = 'auto';
+                btn.style.transition = 'opacity 0.3s ease';
+            }
+            gameOverElement.dataset.restartReady = 'true';
+        }, 1800);
     }
     
-    if (pauseButtonUI) pauseButtonUI.style.display = 'none'; // Hide pause button on game over
+    if (pauseButtonUI) pauseButtonUI.style.display = 'none';
+    if (specialAttackUI) specialAttackUI.style.display = 'none';
     player.group.visible = false;
     
     // Reset power-up effects immediately
@@ -546,16 +564,25 @@ function triggerGameOver() {
 }
 
 function togglePause() {
-    // Can't pause if game hasn't started or is over
     if (!gameStarted || isGameOver) return;
     
     isPaused = !isPaused;
     
     if (pauseMenuElement) {
-        pauseMenuElement.style.display = isPaused ? 'flex' : 'none';
+        if (isPaused) {
+            pauseMenuElement.style.display = 'flex';
+            pauseMenuElement.classList.remove('exiting');
+            pauseMenuElement.classList.add('entering');
+        } else {
+            pauseMenuElement.classList.remove('entering');
+            pauseMenuElement.classList.add('exiting');
+            setTimeout(() => {
+                pauseMenuElement.style.display = 'none';
+                pauseMenuElement.classList.remove('exiting');
+            }, 200);
+        }
     }
     
-    // Hide pause button when paused, show when playing
     if (pauseButtonUI) {
         pauseButtonUI.style.display = isPaused ? 'none' : 'flex';
     }
@@ -576,8 +603,13 @@ if (pauseButtonUI) {
 
 function resetGame() {
     isGameOver = false;
-    if (gameOverElement) gameOverElement.style.display = 'none';
+    if (gameOverElement) {
+        gameOverElement.style.display = 'none';
+        gameOverElement.classList.remove('entering');
+        delete gameOverElement.dataset.restartReady;
+    }
     if (pauseButtonUI) pauseButtonUI.style.display = 'flex'; // Show pause button when game resets
+    if (specialAttackUI) specialAttackUI.style.display = 'block';
     
     // Reset game stats
     score = 0;
@@ -687,6 +719,7 @@ function resetGame() {
 
     // Reset clock
     clock.getDelta();
+    showSurviveStrip();
 }
 
 // Renderer
@@ -719,8 +752,9 @@ window.addEventListener('keydown', (event) => {
     if (!gameStarted && event.code === 'Space') {
         gameStarted = true;
         gameStartTime = Date.now();
-        if (startScreenElement) startScreenElement.style.display = 'none';
+        dismissStartScreen(() => {});
         if (pauseButtonUI) pauseButtonUI.style.display = 'flex';
+        if (specialAttackUI) specialAttackUI.style.display = 'block';
         clock.getDelta();
         updateHealthUI();
         showSurviveStrip();
@@ -738,24 +772,17 @@ window.addEventListener('keydown', (event) => {
     // Don't process other keys if paused
     if (isPaused) return;
 
-    // Toggle inspect mode (works even if game over)
-    if (event.code === 'KeyI') {
+    if (DEV_MODE && event.code === 'KeyI') {
         inspectMode = !inspectMode;
         if (inspectModeElement) {
             inspectModeElement.style.display = inspectMode ? 'block' : 'none';
         }
-        
-        // Store camera position when entering inspect mode
-        if (inspectMode) {
-            inspectCameraPosition.copy(camera.position);
-        }
-        
-        console.log('Inspect Mode:', inspectMode ? 'ON' : 'OFF');
+        if (inspectMode) inspectCameraPosition.copy(camera.position);
         return;
     }
 
     if (isGameOver) {
-        if (event.code === 'Space') {
+        if (event.code === 'Space' && gameOverElement?.dataset.restartReady === 'true') {
             resetGame();
         }
         return;
@@ -775,6 +802,12 @@ window.addEventListener('keydown', (event) => {
                 floatingTexts.push(new FloatingText(scene, `+${SCORE_PER_KILL}`, pos));
             });
         }
+    } else if (event.code === 'KeyQ') {
+        // Special Attack - Ground Slam
+        const success = player.initiateSpecialAttack(enemies, houses, fence, forest);
+        if (success) {
+            console.log('Special Attack initiated!');
+        }
     }
 });
 
@@ -793,8 +826,9 @@ window.addEventListener('click', (event) => {
         if (startButton && (event.target === startButton || startButton.contains(event.target))) {
             gameStarted = true;
             gameStartTime = Date.now();
-            if (startScreenElement) startScreenElement.style.display = 'none';
+            dismissStartScreen(() => {});
             if (pauseButtonUI) pauseButtonUI.style.display = 'flex';
+            if (specialAttackUI) specialAttackUI.style.display = 'block';
             clock.getDelta();
             updateHealthUI();
             showSurviveStrip();
@@ -819,7 +853,8 @@ window.addEventListener('click', (event) => {
     // Restart game - only if clicking the restart button
     if (isGameOver) {
         const restartButton = document.querySelector('.restart-button');
-        if (restartButton && (event.target === restartButton || restartButton.contains(event.target))) {
+        if (restartButton && (event.target === restartButton || restartButton.contains(event.target))
+            && gameOverElement?.dataset.restartReady === 'true') {
             resetGame();
         }
         return;
@@ -873,28 +908,24 @@ renderer.setAnimationLoop(() => {
 
     // Enemy spawning with accumulated timer (disabled in inspect mode)
     if (!inspectMode) {
-        spawnTimer += deltaTime * 1000; // convert to ms
+        spawnTimer += deltaTime * 1000;
         if (spawnTimer >= currentSpawnDelay) {
             spawnEnemy();
             spawnTimer = 0;
         }
         
-        // Power-up spawning with randomized intervals
         powerUpSpawnTimer += deltaTime * 1000;
         if (powerUpSpawnTimer >= nextPowerUpSpawnDelay) {
             spawnPowerUp();
             powerUpSpawnTimer = 0;
-            // Set next random spawn delay
             nextPowerUpSpawnDelay = getRandomPowerUpInterval();
         }
     }
     
-    // Update power-ups
     for (let i = powerUps.length - 1; i >= 0; i--) {
         const powerUp = powerUps[i];
         powerUp.update(deltaTime, camera, player);
         
-        // Check collision with player
         if (powerUp.checkCollision(player.group.position, player.collisionRadius)) {
             let collected = false;
             
@@ -929,12 +960,12 @@ renderer.setAnimationLoop(() => {
         }
     }
     
-    // Update UI
     if (scoreElement) {
         scoreElement.textContent = `Score: ${Math.floor(score)}`;
     }
     
-    // Check if player took damage
+    updateSpecialAttackUI();
+    
     const currentHealth = player.getHealth().current;
     if (currentHealth < lastPlayerHealth) {
         showDamageFlash();
@@ -946,54 +977,52 @@ renderer.setAnimationLoop(() => {
     updatePowerupUI();
     updatePowerupArrows();
 
-    // In inspect mode: move camera with WASD/arrows, otherwise move player
     if (inspectMode) {
-        // Camera movement in inspect mode
         if (keysPressed.size > 0) {
             keysPressed.forEach(direction => {
-                if (direction === 'ArrowUp') {
-                    inspectCameraPosition.y += CAMERA_MOVE_SPEED;
-                } else if (direction === 'ArrowDown') {
-                    inspectCameraPosition.y -= CAMERA_MOVE_SPEED;
-                } else if (direction === 'ArrowLeft') {
-                    inspectCameraPosition.x -= CAMERA_MOVE_SPEED;
-                } else if (direction === 'ArrowRight') {
-                    inspectCameraPosition.x += CAMERA_MOVE_SPEED;
-                }
+                if (direction === 'ArrowUp') inspectCameraPosition.y += CAMERA_MOVE_SPEED;
+                else if (direction === 'ArrowDown') inspectCameraPosition.y -= CAMERA_MOVE_SPEED;
+                else if (direction === 'ArrowLeft') inspectCameraPosition.x -= CAMERA_MOVE_SPEED;
+                else if (direction === 'ArrowRight') inspectCameraPosition.x += CAMERA_MOVE_SPEED;
             });
         }
-        
-        // Smooth camera movement in inspect mode
         camera.position.lerp(inspectCameraPosition.clone().add(cameraOffset), 0.1);
-        
-        // Calculate lookAt point (where camera is centered)
-        const lookAtPoint = inspectCameraPosition.clone();
-        camera.lookAt(lookAtPoint);
+        camera.lookAt(inspectCameraPosition.clone());
     } else {
-        // Normal mode: player movement and camera follows player
         if (!player.isMoving && keysPressed.size > 0) {
-            // Use the most recently pressed key (last key wins)
             const nextMove = Array.from(keysPressed).pop();
             const collision = player.move(nextMove, enemies, houses, fence, forest);
-            // Only trigger game over if not in inspect mode
-            if (collision) {
-                triggerGameOver();
-            }
+            if (collision) triggerGameOver();
         }
-
-        // Smooth camera follow player
         const targetCameraPos = player.group.position.clone().add(cameraOffset);
         camera.position.lerp(targetCameraPos, 0.05);
         camera.lookAt(player.group.position);
     }
 
-    // player.update for visual updates (collision damage disabled in inspect mode)
-    // Apply power-up multipliers to player stats
     const effectiveSpeed = currentPlayerSpeed * player.getSpeedMultiplier();
     const effectiveAttackRadius = currentPlayerAttackRadius * player.getAttackRangeMultiplier();
+    const playerResult = player.update(deltaTime, effectiveSpeed, currentPlayerAttackCooldown, effectiveAttackRadius, enemies);
     
-    const playerCollision = player.update(deltaTime, effectiveSpeed, currentPlayerAttackCooldown, effectiveAttackRadius, enemies);
-    if (playerCollision && !inspectMode) {
+    if (playerResult && playerResult.specialAttackImpact) {
+        const { kills, positions } = player.performSpecialAttackImpact(enemies, scene);
+        if (kills > 0) {
+            score += kills * SCORE_PER_KILL;
+            enemiesKilled += kills;
+            positions.forEach(pos => {
+                floatingTexts.push(new FloatingText(scene, `+${SCORE_PER_KILL}`, pos));
+            });
+        }
+        
+        // Create smoke particles at impact
+        smokeParticles.push(new SmokeParticle(scene, player.group.position.clone(), 30));
+        
+        // Trigger camera shake
+        cameraShakeIntensity = CAMERA_SHAKE_MAX_INTENSITY;
+        cameraShakeDuration = CAMERA_SHAKE_DURATION;
+    }
+    
+    // Check for player death
+    if (playerResult === true && !inspectMode) {
         triggerGameOver();
     }
 
@@ -1012,6 +1041,31 @@ renderer.setAnimationLoop(() => {
         if (!floatingTexts[i].update()) {
             floatingTexts.splice(i, 1);
         }
+    }
+
+    // Update smoke particles
+    for (let i = smokeParticles.length - 1; i >= 0; i--) {
+        if (!smokeParticles[i].update()) {
+            smokeParticles.splice(i, 1);
+        }
+    }
+
+    // Apply camera shake
+    if (cameraShakeDuration > 0) {
+        cameraShakeDuration -= deltaTime * 1000; // Convert to ms
+        const shakeProgress = cameraShakeDuration / CAMERA_SHAKE_DURATION;
+        const currentIntensity = cameraShakeIntensity * shakeProgress;
+        
+        // Add random offset to camera position
+        const shakeX = (Math.random() - 0.5) * currentIntensity * 2;
+        const shakeY = (Math.random() - 0.5) * currentIntensity * 2;
+        const shakeZ = (Math.random() - 0.5) * currentIntensity;
+        
+        camera.position.set(
+            player.group.position.x + cameraOffset.x + shakeX,
+            player.group.position.y + cameraOffset.y + shakeY,
+            cameraOffset.z + shakeZ
+        );
     }
 
     renderer.render(scene, camera);

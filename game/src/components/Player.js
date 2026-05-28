@@ -54,6 +54,14 @@ export default class Player {
             invincibilityShield: 0
         };
         
+        // Special attack system
+        this.specialAttackReady = true;
+        this.specialAttackCooldown = 8000; // 8 seconds to recharge
+        this.lastSpecialAttackTime = 0;
+        this.isPerformingSpecialAttack = false;
+        this.specialAttackRotation = 0;
+        this.specialAttackImpactRadius = 200; // 4 blocks (50 units per block)
+        
         // Shadow to show hitbox
         this.shadow = null;
         
@@ -231,10 +239,12 @@ export default class Player {
                 color: 0x00ffff, 
                 transparent: true, 
                 opacity: 0.7,
-                side: THREE.DoubleSide
+                side: THREE.DoubleSide,
+                depthTest: false
             });
             this.cooldownDial = new THREE.Mesh(geometry, material);
             this.cooldownDial.position.z = 0.26;
+            this.cooldownDial.renderOrder = 999;
         }
 
         this.group.add(this.attackCircle);
@@ -255,8 +265,8 @@ export default class Player {
     }
     
     takeDamage(amount = 1) {
-        // Can't take damage if invulnerable or has shield
-        if (this.isInvulnerable || this.isShielded()) return false;
+        // Can't take damage if invulnerable, has shield, or is performing special attack
+        if (this.isInvulnerable || this.isShielded() || this.isPerformingSpecialAttack) return false;
         
         this.currentHealth -= amount;
         this.lastDamageTime = Date.now();
@@ -264,6 +274,61 @@ export default class Player {
         
         // Return true if player died
         return this.currentHealth <= 0;
+    }
+    
+    initiateSpecialAttack(enemies = [], houses = [], fence = null, forest = null) {
+        // Check if special attack is ready
+        if (!this.specialAttackReady || this.isMoving || this.isPerformingSpecialAttack) {
+            return false;
+        }
+        
+        // Can't perform if blocked by obstacles in current position
+        const targetPos = this.group.position.clone();
+        
+        if (fence && fence.checkCollision(targetPos, this.collisionRadius)) return false;
+        if (forest && forest.checkTreeCollision(targetPos, this.collisionRadius)) return false;
+        
+        const hasHouseCollision = houses.some(house => house.checkCollision(targetPos, this.collisionRadius));
+        if (hasHouseCollision) return false;
+        
+        // Start special attack
+        this.isPerformingSpecialAttack = true;
+        this.isMoving = true;
+        this.progress = 0;
+        this.specialAttackRotation = 0;
+        this.specialAttackReady = false;
+        this.lastSpecialAttackTime = Date.now();
+        
+        // Store position (no movement, just jump in place)
+        this.startPosition.copy(this.group.position);
+        this.targetPosition.copy(this.group.position);
+        
+        return true;
+    }
+    
+    performSpecialAttackImpact(enemies, scene) {
+        // Create impact effect and damage enemies within radius
+        let kills = 0;
+        const positions = [];
+        
+        for (let i = enemies.length - 1; i >= 0; i--) {
+            const enemy = enemies[i];
+            const distance = this.group.position.distanceTo(enemy.group.position);
+            if (distance <= this.specialAttackImpactRadius) {
+                positions.push(enemy.group.position.clone());
+                scene.remove(enemy.group);
+                enemies.splice(i, 1);
+                kills++;
+            }
+        }
+        
+        return { kills, positions };
+    }
+    
+    getSpecialAttackProgress() {
+        if (this.specialAttackReady) return 1;
+        const elapsed = Date.now() - this.lastSpecialAttackTime;
+        return Math.min(elapsed / this.specialAttackCooldown, 1);
     }
     
     getHealth() {
@@ -322,6 +387,14 @@ export default class Player {
                     this.activeEffects[effect] = false;
                     this.effectTimers[effect] = 0;
                 }
+            }
+        }
+        
+        // Update special attack cooldown (always, even during movement/special)
+        if (!this.specialAttackReady) {
+            const elapsed = now - this.lastSpecialAttackTime;
+            if (elapsed >= this.specialAttackCooldown) {
+                this.specialAttackReady = true;
             }
         }
         
@@ -471,43 +544,100 @@ export default class Player {
             }
         }
 
-        if (!this.isMoving) return false;
+        if (!this.isMoving) {
+            return false;
+        }
 
-        // Frame-rate-independent progress: original was 0.02 per frame at 60fps,
-        // which is 0.02 * 60 = 1.2 progress units per second.
-        const progressRate = 0.02 * FRAME_RATE_REFERENCE; // 1.2 per second
+        const isSpecialAttack = this.isPerformingSpecialAttack;
+        // Special attack runs at 0.5x speed for a dramatic arc
+        const progressRate = 0.02 * FRAME_RATE_REFERENCE * (isSpecialAttack ? 0.5 : 1.0);
         this.progress += progressRate * deltaTime * moveSpeed;
 
         if (this.progress >= 1) {
             this.progress = 1;
             this.isMoving = false;
+            
+            if (isSpecialAttack) {
+                this.isPerformingSpecialAttack = false;
+                this.model.rotation.z = 0;
+                // Cooldown starts from landing, not from initiation
+                this.lastSpecialAttackTime = Date.now();
+                
+                const slamRadius = this.specialAttackImpactRadius;
+                const circleGeo = new THREE.CircleGeometry(slamRadius, 32);
+                const circleMat = new THREE.MeshBasicMaterial({
+                    color: 0xffc700,
+                    transparent: true,
+                    opacity: 0.5,
+                    side: THREE.DoubleSide,
+                    depthWrite: false
+                });
+                if (this.attackCircle) this.group.remove(this.attackCircle);
+                this.attackCircle = new THREE.Mesh(circleGeo, circleMat);
+                this.attackCircle.position.z = 1;
+                this.attackVisualStartTime = Date.now();
+                this.attackVisualDuration = 400;
+                this.group.add(this.attackCircle);
+                
+                // Force-create the cyan cooldown dial so it's visible immediately
+                this.lastAttackTime = Date.now();
+                if (this.cooldownDial) {
+                    this.cooldownDial.geometry.dispose();
+                    this.group.remove(this.cooldownDial);
+                }
+                const dialGeo = new THREE.RingGeometry(attackRadius + 5, attackRadius + 15, 32, 1, 0, 0.001);
+                const dialMat = new THREE.MeshBasicMaterial({
+                    color: 0x00ffff,
+                    transparent: true,
+                    opacity: 0.7,
+                    side: THREE.DoubleSide,
+                    depthTest: false
+                });
+                this.cooldownDial = new THREE.Mesh(dialGeo, dialMat);
+                this.cooldownDial.position.z = 0.26;
+                this.cooldownDial.renderOrder = 999;
+                this.group.add(this.cooldownDial);
+                
+                return { specialAttackImpact: true };
+            }
         }
 
         // Update position
         this.group.position.lerpVectors(this.startPosition, this.targetPosition, this.progress);
 
-        // Jump height (Z-axis)
-        const jumpOffset = Math.sin(this.progress * Math.PI) * JUMP_HEIGHT;
+        // Jump height (Z-axis) - higher for special attack
+        const jumpHeight = isSpecialAttack ? JUMP_HEIGHT * 2.5 : JUMP_HEIGHT;
+        const jumpOffset = Math.sin(this.progress * Math.PI) * jumpHeight;
+        
         if (this.model) {
             this.model.position.z = this.baseZ + jumpOffset;
+            
+            if (isSpecialAttack) {
+                this.specialAttackRotation = this.progress * Math.PI * 2;
+                this.model.rotation.z = this.specialAttackRotation;
+            } else {
+                this.model.rotation.z = 0;
+            }
         }
 
-        // Update shield sphere position to follow the model during jumps
         if (this.shieldSphere && this.model) {
             this.shieldSphere.position.z = this.baseZ + jumpOffset;
         }
 
-        // Update shadow opacity based on jump height (more realistic)
         if (this.shadow) {
-            // When on ground (jumpOffset = 0): opacity = 0.3
-            // When at peak (jumpOffset = JUMP_HEIGHT): opacity = 0.1
-            // Linear interpolation: opacity decreases as height increases
-            const heightRatio = jumpOffset / JUMP_HEIGHT; // 0 to 1
-            this.shadow.material.opacity = 0.3 - (heightRatio * 0.2); // 0.3 to 0.1
+            const heightRatio = jumpOffset / jumpHeight;
+            this.shadow.material.opacity = 0.3 - (heightRatio * 0.2);
+            
+            // Shadow grows as the toad descends during a slam, telegraphing the impact zone
+            if (isSpecialAttack && this.progress > 0.5) {
+                const impactScale = 1 + (this.progress - 0.5) * 4;
+                this.shadow.scale.set(impactScale, impactScale, 1);
+            } else {
+                this.shadow.scale.set(1, 1, 1);
+            }
         }
 
-        // Continuous collision check during hop: enemies may have moved into our path
-        // since move() validated the target. Without this, the toad can tunnel through them.
+        // Re-check collisions mid-hop: enemies can move into the path after move() validated it
         if (this.collisionRadius > 0 && !this.isInvulnerable) {
             for (const enemy of enemies) {
                 if (!enemy.model) continue;
@@ -515,9 +645,7 @@ export default class Player {
                     this.group.position, this.collisionRadius,
                     enemy.group.position, enemy.collisionRadius
                 );
-                if (collision) {
-                    return this.takeDamage(1); // Returns true if player died
-                }
+                if (collision) return this.takeDamage(1);
             }
         }
 
