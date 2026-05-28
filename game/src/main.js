@@ -3,6 +3,7 @@ import './style.css';
 import Player from './components/Player.js';
 import Enemy from './components/Enemy.js';
 import FloatingText from './components/FloatingText.js';
+import PowerUp, { PowerUpType } from './components/PowerUp.js';
 import { createCamera } from './components/Camera.js';
 import { createRenderer } from './components/Renderer.js';
 import createMap from './components/Map.js';
@@ -124,8 +125,95 @@ let currentPlayerAttackRadius = BASE_ATTACK_RADIUS;
 const SCORE_PER_SECOND = 0.1;
 const SCORE_PER_KILL = 10;
 
+// Power-ups
+const powerUps = [];
+const POWERUP_SPAWN_BASE_INTERVAL = 8000; // Base 8 seconds (reduced from 15)
+const POWERUP_SPAWN_VARIANCE = 4000; // +/- 4 seconds randomization
+let powerUpSpawnTimer = 0;
+let nextPowerUpSpawnDelay = POWERUP_SPAWN_BASE_INTERVAL;
+
+// Power-up spawn limits - max of each type on map at once
+const MAX_POWERUPS_PER_TYPE = {
+    [PowerUpType.HEALTH]: 3,
+    [PowerUpType.SPEED]: 2,
+    [PowerUpType.ATTACK_RANGE]: 2,
+    [PowerUpType.INVINCIBILITY]: 2
+};
+
+function countPowerUpsByType(type) {
+    return powerUps.filter(p => p.type === type).length;
+}
+
+function getRandomPowerUpInterval() {
+    // Randomize spawn time: 4-12 seconds (8 ± 4)
+    return POWERUP_SPAWN_BASE_INTERVAL + (Math.random() - 0.5) * 2 * POWERUP_SPAWN_VARIANCE;
+}
+
+function spawnPowerUp() {
+    // Build list of available power-up types (not at max limit)
+    const availableTypes = [];
+    
+    if (countPowerUpsByType(PowerUpType.HEALTH) < MAX_POWERUPS_PER_TYPE[PowerUpType.HEALTH]) {
+        // Health pack gets multiple entries for higher probability (35%)
+        availableTypes.push(PowerUpType.HEALTH, PowerUpType.HEALTH, PowerUpType.HEALTH);
+    }
+    if (countPowerUpsByType(PowerUpType.SPEED) < MAX_POWERUPS_PER_TYPE[PowerUpType.SPEED]) {
+        // Speed boost (25%)
+        availableTypes.push(PowerUpType.SPEED, PowerUpType.SPEED);
+    }
+    if (countPowerUpsByType(PowerUpType.ATTACK_RANGE) < MAX_POWERUPS_PER_TYPE[PowerUpType.ATTACK_RANGE]) {
+        // Attack range (20%)
+        availableTypes.push(PowerUpType.ATTACK_RANGE, PowerUpType.ATTACK_RANGE);
+    }
+    if (countPowerUpsByType(PowerUpType.INVINCIBILITY) < MAX_POWERUPS_PER_TYPE[PowerUpType.INVINCIBILITY]) {
+        // Invincibility (20%)
+        availableTypes.push(PowerUpType.INVINCIBILITY, PowerUpType.INVINCIBILITY);
+    }
+    
+    // If no types available (all at max), don't spawn
+    if (availableTypes.length === 0) {
+        console.log('All power-up types at max limit, skipping spawn');
+        return;
+    }
+    
+    // Randomly select from available types
+    const type = availableTypes[Math.floor(Math.random() * availableTypes.length)];
+    
+    const tileSize = 50; // Map tile size
+    
+    // Find a valid spawn location snapped to tile edges/corners (grid intersections)
+    const maxAttempts = 30;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        // Generate random position within playable area
+        const randomX = (Math.random() - 0.5) * 800;
+        const randomY = (Math.random() - 0.5) * 800;
+        
+        // Snap to nearest grid intersection (tile edges/corners)
+        const x = Math.round(randomX / tileSize) * tileSize;
+        const y = Math.round(randomY / tileSize) * tileSize;
+        const pos = new THREE.Vector3(x, y, 0);
+        
+        // Check if location is valid (not too close to houses, trees, enemies, or player)
+        const tooCloseToHouse = houses.some(house => pos.distanceTo(house.group.position) < 100);
+        const tooCloseToTree = forest && forest.checkTreeCollision(pos, 30);
+        const tooCloseToPlayer = pos.distanceTo(player.group.position) < 100;
+        const tooCloseToEnemy = enemies.some(enemy => pos.distanceTo(enemy.group.position) < 80);
+        
+        if (!tooCloseToHouse && !tooCloseToTree && !tooCloseToPlayer && !tooCloseToEnemy) {
+            const powerUp = new PowerUp(scene, pos, type);
+            powerUps.push(powerUp);
+            console.log(`Spawned ${type} power-up at`, pos);
+            return;
+        }
+    }
+    
+    console.warn('Could not find valid power-up spawn location');
+}
+
 // Scoring state
 let score = 0;
+let enemiesKilled = 0;
+let gameStartTime = 0;
 let isGameOver = false;
 let gameStarted = false;
 let isPaused = false; // Pause state
@@ -135,11 +223,22 @@ const clock = new THREE.Clock();
 let lastPlayerHealth = 3; // Track health to detect damage
 const scoreElement = document.querySelector('.score');
 const healthBarElement = document.querySelector('.health-bar');
+const powerupStatusElement = document.querySelector('.powerup-status');
+const powerupArrowsElement = document.querySelector('.powerup-arrows');
 const gameOverElement = document.querySelector('.game-over');
 const startScreenElement = document.querySelector('.start-screen');
 const inspectModeElement = document.querySelector('.inspect-mode');
 const pauseMenuElement = document.querySelector('.pause-menu');
 const pauseButtonUI = document.querySelector('.pause-button-ui');
+
+function showSurviveStrip() {
+    const strip = document.createElement('div');
+    strip.className = 'survive-strip';
+    strip.innerHTML = '<span>Survive as long as possible!</span>';
+    document.body.appendChild(strip);
+    // Remove from DOM after animation completes (2.6s)
+    setTimeout(() => strip.remove(), 2700);
+}
 
 function updateHealthUI() {
     if (!healthBarElement) return;
@@ -179,6 +278,116 @@ function showDamageFlash() {
     setTimeout(() => {
         document.body.removeChild(flash);
     }, 300);
+}
+
+const POWERUP_CONFIG = {
+    health:       { icon: '❤️',  color: '#ff4444', label: 'HEALTH' },
+    speed:        { icon: '⚡',  color: '#ffd700', label: 'SPEED'  },
+    attack_range: { icon: '🔥', color: '#00bfff', label: 'ATTACK' },
+    invincibility:{ icon: '🛡️', color: '#9c27b0', label: 'SHIELD' },
+};
+
+function updatePowerupArrows() {
+    if (!powerupArrowsElement) return;
+    powerupArrowsElement.innerHTML = '';
+    if (!powerUps.length) return;
+
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    const EDGE = 50; // distance from screen edge
+
+    powerUps.forEach(powerUp => {
+        // Project world position to screen coordinates
+        const pos3D = powerUp.group.position.clone();
+        pos3D.project(camera);
+
+        const sx = (pos3D.x * 0.5 + 0.5) * W;
+        const sy = (-pos3D.y * 0.5 + 0.5) * H;
+
+        // Only show arrow when power-up is off-screen
+        const onScreen = sx > 0 && sx < W && sy > 0 && sy < H && pos3D.z < 1;
+        if (onScreen) return;
+
+        // Clamp to screen edges to get arrow position
+        const cx = W / 2, cy = H / 2;
+        const dx = sx - cx, dy = sy - cy;
+        const angle = Math.atan2(dy, dx);
+
+        // Find edge intersection
+        const absDx = Math.abs(dx), absDy = Math.abs(dy);
+        let ex, ey;
+        if (absDx / (W / 2 - EDGE) > absDy / (H / 2 - EDGE)) {
+            // Hits left/right edge
+            ex = cx + Math.sign(dx) * (W / 2 - EDGE);
+            ey = cy + Math.tan(angle) * Math.sign(dx) * (W / 2 - EDGE);
+        } else {
+            // Hits top/bottom edge
+            ey = cy + Math.sign(dy) * (H / 2 - EDGE);
+            ex = cx + (1 / Math.tan(angle)) * Math.sign(dy) * (H / 2 - EDGE);
+        }
+        ex = Math.max(EDGE, Math.min(W - EDGE, ex));
+        ey = Math.max(EDGE, Math.min(H - EDGE, ey));
+
+        const config = POWERUP_CONFIG[powerUp.type] || POWERUP_CONFIG.health;
+
+        const el = document.createElement('div');
+        el.className = 'powerup-arrow';
+        el.style.left = `${ex}px`;
+        el.style.top  = `${ey}px`;
+        el.style.transform = `translate(-50%, -50%) rotate(${angle + Math.PI / 2}rad)`;
+        el.style.color = config.color;
+        el.style.setProperty('--rotate', `rotate(${angle + Math.PI / 2}rad)`);
+        el.innerHTML = `
+            <div class="arrow-icon">${config.icon}</div>
+            <div class="arrow-label" style="transform: rotate(${-(angle + Math.PI / 2)}rad)">▼</div>
+        `;
+        powerupArrowsElement.appendChild(el);
+    });
+}
+
+function updatePowerupUI() {
+    if (!powerupStatusElement) return;
+    
+    powerupStatusElement.innerHTML = '';
+    
+    // Speed boost
+    if (player.activeEffects.speedBoost) {
+        const timeLeft = Math.ceil(player.effectTimers.speedBoost / 1000);
+        const indicator = document.createElement('div');
+        indicator.className = 'powerup-indicator speed';
+        indicator.innerHTML = `
+            <span class="icon">⚡</span>
+            <span>SPEED BOOST</span>
+            <span class="timer">${timeLeft}s</span>
+        `;
+        powerupStatusElement.appendChild(indicator);
+    }
+    
+    // Attack range boost
+    if (player.activeEffects.attackRangeBoost) {
+        const timeLeft = Math.ceil(player.effectTimers.attackRangeBoost / 1000);
+        const indicator = document.createElement('div');
+        indicator.className = 'powerup-indicator attack';
+        indicator.innerHTML = `
+            <span class="icon">🔥</span>
+            <span>ATTACK BOOST</span>
+            <span class="timer">${timeLeft}s</span>
+        `;
+        powerupStatusElement.appendChild(indicator);
+    }
+    
+    // Invincibility shield
+    if (player.activeEffects.invincibilityShield) {
+        const timeLeft = Math.ceil(player.effectTimers.invincibilityShield / 1000);
+        const indicator = document.createElement('div');
+        indicator.className = 'powerup-indicator shield';
+        indicator.innerHTML = `
+            <span class="icon">🛡️</span>
+            <span>SHIELD</span>
+            <span class="timer">${timeLeft}s</span>
+        `;
+        powerupStatusElement.appendChild(indicator);
+    }
 }
 
 function spawnEnemy() {
@@ -226,11 +435,55 @@ function spawnEnemy() {
 function triggerGameOver() {
     if (isGameOver) return;
     isGameOver = true;
-    if (gameOverElement) gameOverElement.style.display = 'block';
+    
+    // Calculate game stats
+    const timeSurvived = Math.floor((Date.now() - gameStartTime) / 1000); // seconds
+    const finalScore = Math.floor(score);
+    
+    // Update game over screen with stats
+    if (gameOverElement) {
+        gameOverElement.innerHTML = `
+            <div class="game-over-content">
+                <h1>🐸 GAME OVER</h1>
+                <div class="stat-item-hero">
+                    <span class="stat-label">Final Score</span>
+                    <span class="stat-value">${finalScore}</span>
+                </div>
+                <div class="game-stats">
+                    <div class="stat-item">
+                        <span class="stat-label">Enemies Defeated</span>
+                        <span class="stat-value">⚔️ ${enemiesKilled}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Time Survived</span>
+                        <span class="stat-value">⏱ ${Math.floor(timeSurvived / 60)}:${String(timeSurvived % 60).padStart(2, '0')}</span>
+                    </div>
+                </div>
+                <div class="restart-button">Press SPACE or Click to Restart</div>
+            </div>
+        `;
+        gameOverElement.style.display = 'flex';
+    }
+    
     if (pauseButtonUI) pauseButtonUI.style.display = 'none'; // Hide pause button on game over
     player.group.visible = false;
+    
+    // Reset power-up effects immediately
+    player.activeEffects = {
+        speedBoost: false,
+        attackRangeBoost: false,
+        invincibilityShield: false
+    };
+    player.effectTimers = {
+        speedBoost: 0,
+        attackRangeBoost: 0,
+        invincibilityShield: 0
+    };
+    
     // Update health UI one final time to show 0 hearts
     updateHealthUI();
+    // Update power-up UI to clear any active effects
+    updatePowerupUI();
     // Clear held keys
     keysPressed.clear();
 }
@@ -269,6 +522,11 @@ function resetGame() {
     if (gameOverElement) gameOverElement.style.display = 'none';
     if (pauseButtonUI) pauseButtonUI.style.display = 'flex'; // Show pause button when game resets
     
+    // Reset game stats
+    score = 0;
+    enemiesKilled = 0;
+    gameStartTime = Date.now();
+    
     // Reset player
     player.group.position.set(0, 0, 0);
     player.group.visible = true;
@@ -279,6 +537,18 @@ function resetGame() {
     
     // Reset health
     player.currentHealth = player.maxHealth;
+    
+    // Reset power-up effects
+    player.activeEffects = {
+        speedBoost: false,
+        attackRangeBoost: false,
+        invincibilityShield: false
+    };
+    player.effectTimers = {
+        speedBoost: 0,
+        attackRangeBoost: 0,
+        invincibilityShield: 0
+    };
     player.isInvulnerable = false;
     lastPlayerHealth = player.maxHealth;
     updateHealthUI();
@@ -314,6 +584,14 @@ function resetGame() {
         scene.remove(enemy.group);
     });
     enemies.length = 0;
+    
+    // Clear power-ups
+    powerUps.forEach(powerUp => {
+        powerUp.destroy();
+    });
+    powerUps.length = 0;
+    powerUpSpawnTimer = 0;
+    nextPowerUpSpawnDelay = getRandomPowerUpInterval(); // Reset with random delay
 
     // Clear floating texts
     floatingTexts.forEach(text => {
@@ -398,10 +676,12 @@ window.addEventListener('keydown', (event) => {
     // Handle start screen
     if (!gameStarted && event.code === 'Space') {
         gameStarted = true;
+        gameStartTime = Date.now();
         if (startScreenElement) startScreenElement.style.display = 'none';
-        if (pauseButtonUI) pauseButtonUI.style.display = 'flex'; // Show pause button when game starts
-        clock.getDelta(); // Reset clock when game starts
-        updateHealthUI(); // Initialize health display
+        if (pauseButtonUI) pauseButtonUI.style.display = 'flex';
+        clock.getDelta();
+        updateHealthUI();
+        showSurviveStrip();
         return;
     }
 
@@ -444,9 +724,11 @@ window.addEventListener('keydown', (event) => {
         keysPressed.add(keyMap[event.code]);
         event.preventDefault(); // Prevent browser scrolling
     } else if (event.code === 'Space') {
-        const { kills, positions } = player.attack(enemies, scene, currentPlayerAttackRadius, currentPlayerAttackCooldown);
+        const effectiveAttackRadius = currentPlayerAttackRadius * player.getAttackRangeMultiplier();
+        const { kills, positions } = player.attack(enemies, scene, effectiveAttackRadius, currentPlayerAttackCooldown);
         if (kills > 0) {
             score += kills * SCORE_PER_KILL;
+            enemiesKilled += kills;
             positions.forEach(pos => {
                 floatingTexts.push(new FloatingText(scene, `+${SCORE_PER_KILL}`, pos));
             });
@@ -468,10 +750,12 @@ window.addEventListener('click', (event) => {
         const startButton = document.querySelector('.start-button');
         if (startButton && (event.target === startButton || startButton.contains(event.target))) {
             gameStarted = true;
+            gameStartTime = Date.now();
             if (startScreenElement) startScreenElement.style.display = 'none';
-            if (pauseButtonUI) pauseButtonUI.style.display = 'flex'; // Show pause button when game starts
-            clock.getDelta(); // Reset clock when game starts
-            updateHealthUI(); // Initialize health display
+            if (pauseButtonUI) pauseButtonUI.style.display = 'flex';
+            clock.getDelta();
+            updateHealthUI();
+            showSurviveStrip();
         }
         return;
     }
@@ -490,8 +774,13 @@ window.addEventListener('click', (event) => {
         return;
     }
     
+    // Restart game - only if clicking the restart button
     if (isGameOver) {
-        resetGame();
+        const restartButton = document.querySelector('.restart-button');
+        if (restartButton && (event.target === restartButton || restartButton.contains(event.target))) {
+            resetGame();
+        }
+        return;
     }
 });
 
@@ -547,6 +836,55 @@ renderer.setAnimationLoop(() => {
             spawnEnemy();
             spawnTimer = 0;
         }
+        
+        // Power-up spawning with randomized intervals
+        powerUpSpawnTimer += deltaTime * 1000;
+        if (powerUpSpawnTimer >= nextPowerUpSpawnDelay) {
+            spawnPowerUp();
+            powerUpSpawnTimer = 0;
+            // Set next random spawn delay
+            nextPowerUpSpawnDelay = getRandomPowerUpInterval();
+        }
+    }
+    
+    // Update power-ups
+    for (let i = powerUps.length - 1; i >= 0; i--) {
+        const powerUp = powerUps[i];
+        powerUp.update(deltaTime, camera, player);
+        
+        // Check collision with player
+        if (powerUp.checkCollision(player.group.position, player.collisionRadius)) {
+            let collected = false;
+            
+            switch (powerUp.type) {
+                case PowerUpType.HEALTH:
+                    collected = player.applyHealthPack();
+                    if (collected) {
+                        floatingTexts.push(new FloatingText(scene, powerUp.group.position, '+1 HEALTH', 0x00ff00));
+                    }
+                    break;
+                case PowerUpType.SPEED:
+                    player.applySpeedBoost(10000);
+                    floatingTexts.push(new FloatingText(scene, powerUp.group.position, 'SPEED BOOST!', 0xffd700));
+                    collected = true;
+                    break;
+                case PowerUpType.ATTACK_RANGE:
+                    player.applyAttackRangeBoost(10000);
+                    floatingTexts.push(new FloatingText(scene, powerUp.group.position, 'ATTACK BOOST!', 0x00bfff));
+                    collected = true;
+                    break;
+                case PowerUpType.INVINCIBILITY:
+                    player.applyInvincibilityShield(5000);
+                    floatingTexts.push(new FloatingText(scene, powerUp.group.position, 'SHIELD!', 0x9c27b0));
+                    collected = true;
+                    break;
+            }
+            
+            if (collected) {
+                powerUp.destroy();
+                powerUps.splice(i, 1);
+            }
+        }
     }
     
     // Update UI
@@ -562,6 +900,8 @@ renderer.setAnimationLoop(() => {
     lastPlayerHealth = currentHealth;
     
     updateHealthUI();
+    updatePowerupUI();
+    updatePowerupArrows();
 
     // In inspect mode: move camera with WASD/arrows, otherwise move player
     if (inspectMode) {
@@ -605,7 +945,11 @@ renderer.setAnimationLoop(() => {
     }
 
     // player.update for visual updates (collision damage disabled in inspect mode)
-    const playerCollision = player.update(deltaTime, currentPlayerSpeed, currentPlayerAttackCooldown, currentPlayerAttackRadius, enemies);
+    // Apply power-up multipliers to player stats
+    const effectiveSpeed = currentPlayerSpeed * player.getSpeedMultiplier();
+    const effectiveAttackRadius = currentPlayerAttackRadius * player.getAttackRangeMultiplier();
+    
+    const playerCollision = player.update(deltaTime, effectiveSpeed, currentPlayerAttackCooldown, effectiveAttackRadius, enemies);
     if (playerCollision && !inspectMode) {
         triggerGameOver();
     }

@@ -34,10 +34,11 @@ body {
   font-family: Arial, sans-serif;
   max-width: 600px;
   padding: 40px;
-  background: rgba(0, 0, 0, 0.3);
+  background: rgba(0, 0, 0, 0.4);
   border-radius: 20px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-  cursor: default; /* Not clickable */
+  backdrop-filter: blur(6px);
+  cursor: default;
 }
 
 .start-content h1 {
@@ -52,23 +53,68 @@ body {
   padding: 20px;
   background: rgba(255, 255, 255, 0.1);
   border-radius: 10px;
-  cursor: default; /* Not clickable */
+  cursor: default;
 }
 
 .instructions h2 {
-  font-size: 28px;
-  margin: 0 0 20px 0;
-  color: #ffeb3b;
+  font-size: 24px;
+  margin: 0 0 16px 0;
+  color: white;
+  font-weight: 700;
 }
 
 .instructions p {
-  font-size: 18px;
+  font-size: 17px;
   margin: 10px 0;
-  line-height: 1.5;
+  line-height: 1.6;
 }
 
-.instructions strong {
+/* Yellow pill for key labels inside instructions */
+.key-label {
+  display: inline-flex;
+  align-items: center;
+  color: #2e7d32;
+  background: linear-gradient(135deg, #ffeb3b, #fdd835);
+  font-weight: bold;
+  padding: 3px 14px;
+  border-radius: 20px;
+  font-size: 14px;
+  vertical-align: middle;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+/* Dramatic "Survive!" strip shown on game start */
+@keyframes surviveStripIn {
+  0%   { opacity: 0; letter-spacing: 12px; }
+  30%  { opacity: 1; letter-spacing: 4px; }
+  70%  { opacity: 1; letter-spacing: 4px; }
+  100% { opacity: 0; letter-spacing: 4px; }
+}
+
+.survive-strip {
+  position: fixed;
+  top: 50%;
+  left: 0;
+  width: 100%;
+  transform: translateY(-50%);
+  text-align: center;
+  z-index: 35;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 28px 0;
+  backdrop-filter: blur(4px);
+  animation: surviveStripIn 2.6s ease forwards;
+}
+
+.survive-strip span {
+  font-family: Arial, sans-serif;
+  font-size: 42px;
+  font-weight: bold;
   color: #ffeb3b;
+  text-shadow: 0 2px 16px rgba(255, 235, 59, 0.5);
+  letter-spacing: 4px;
+  text-transform: uppercase;
 }
 
 .scoring {
@@ -76,18 +122,20 @@ body {
   padding: 15px;
   background: rgba(255, 255, 255, 0.1);
   border-radius: 10px;
-  cursor: default; /* Not clickable */
+  cursor: default;
 }
 
 .scoring h3 {
   font-size: 22px;
   margin: 0 0 15px 0;
-  color: #4caf50;
+  color: white;
+  font-weight: 700;
 }
 
 .scoring p {
   font-size: 16px;
   margin: 8px 0;
+  color: rgba(255, 255, 255, 0.85);
 }
 
 .start-button {
@@ -172,6 +220,99 @@ body {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
+.powerup-status {
+  position: absolute;
+  top: 80px;
+  right: 20px;
+  z-index: 10;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.powerup-indicator {
+  background: rgba(0, 0, 0, 0.8);
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 2px solid;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: Arial, sans-serif;
+  font-size: 14px;
+  font-weight: bold;
+  color: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  animation: powerupPulse 1s ease-in-out infinite;
+}
+
+.powerup-indicator .icon {
+  font-size: 18px;
+}
+
+.powerup-indicator .timer {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.powerup-indicator.speed {
+  border-color: #ffd700;
+}
+
+.powerup-indicator.attack {
+  border-color: #00bfff;
+}
+
+.powerup-indicator.shield {
+  border-color: #9c27b0;
+}
+
+@keyframes powerupPulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.05); opacity: 0.9; }
+}
+
+/* Power-up HUD screen edge arrows */
+.powerup-arrows {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 11;
+}
+
+.powerup-arrow {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+  animation: arrowPulse 0.8s ease-in-out infinite;
+  filter: drop-shadow(0 0 4px currentColor);
+}
+
+.powerup-arrow .arrow-icon {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.powerup-arrow .arrow-label {
+  font-size: 10px;
+  font-weight: bold;
+  font-family: Arial, sans-serif;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+  white-space: nowrap;
+}
+
+@keyframes arrowPulse {
+  0%, 100% { opacity: 1; transform: scale(1) var(--rotate); }
+  50% { opacity: 0.6; transform: scale(0.85) var(--rotate); }
+}
+
 .heart {
   width: 36px;
   height: 36px;
@@ -236,29 +377,126 @@ body {
 }
 
 .game-over {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: rgba(0, 0, 0, 0.8);
-  color: red;
-  padding: 40px;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 30;
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+
+.game-over-content {
+  background: linear-gradient(135deg, rgba(46, 125, 50, 0.95), rgba(27, 94, 32, 0.95));
+  padding: 50px 60px;
   border-radius: 20px;
   text-align: center;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 10px 50px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
+  pointer-events: auto;
   font-family: Arial, sans-serif;
-  z-index: 20;
-  cursor: pointer;
 }
 
 .game-over h1 {
-  font-size: 48px;
-  margin: 0 0 20px 0;
+  font-size: 52px;
+  margin: 0 0 30px 0;
+  color: white;
+  text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.5);
+  font-weight: bold;
+  letter-spacing: 3px;
 }
 
-.game-over p {
+/* Hero score shown prominently at top */
+.stat-item-hero {
+  padding: 20px 30px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 12px;
+  border: 2px solid rgba(255, 235, 59, 0.4);
+  margin-bottom: 20px;
+}
+
+.stat-item-hero .stat-label {
+  display: block;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.stat-item-hero .stat-value {
+  display: block;
+  color: #ffeb3b;
+  font-size: 64px;
+  font-weight: bold;
+  text-shadow: 0 0 12px rgba(255, 235, 59, 0.4);
+  line-height: 1;
+}
+
+.game-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 35px;
+}
+
+.stat-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 25px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  min-width: 360px;
+}
+
+.stat-label {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.stat-value {
   color: white;
+  font-size: 26px;
+  font-weight: bold;
+}
+
+.restart-button {
+  padding: 16px 40px;
   font-size: 20px;
-  margin: 0;
+  font-weight: bold;
+  color: #2e7d32;
+  background: linear-gradient(135deg, #ffeb3b 0%, #fdd835 100%);
+  border-radius: 50px;
+  display: inline-block;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+  animation: pulse 1.5s ease-in-out infinite;
+  cursor: pointer;
+  pointer-events: auto;
+  border: none;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.restart-button:hover {
+  animation: none;
+  transform: scale(1.05);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+
+.restart-button:active {
+  transform: scale(0.98);
 }
 
 .pause-menu {
@@ -285,7 +523,8 @@ body {
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
   border: 3px solid rgba(255, 255, 255, 0.3);
   min-width: 400px;
-  cursor: default; /* Remove pointer cursor from content panel */
+  backdrop-filter: blur(6px);
+  cursor: default;
 }
 
 .pause-content h1 {
@@ -303,10 +542,12 @@ body {
 }
 
 .pause-controls h2 {
-  font-size: 28px;
+  font-size: 22px;
   margin: 0 0 20px 0;
-  color: #ffeb3b;
-  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+  color: white;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 2px;
 }
 
 .control-group {
@@ -327,12 +568,12 @@ body {
 
 .control-key {
   font-weight: bold;
-  color: #ffeb3b;
-  font-size: 16px;
-  padding: 8px 12px;
-  background: rgba(0, 0, 0, 0.3);
+  color: #2e7d32;
+  font-size: 15px;
+  padding: 8px 20px;
+  background: linear-gradient(135deg, #ffeb3b, #fdd835);
   border-radius: 6px;
-  min-width: 140px;
+  min-width: 160px;
   text-align: center;
 }
 
