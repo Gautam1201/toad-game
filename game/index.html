@@ -15,6 +15,7 @@
           <div class="controls-grid">
             <span class="key-label">Arrow Keys / WASD</span><span class="control-desc">Move Tode</span>
             <span class="key-label">Spacebar</span><span class="control-desc">Attack nearby enemies</span>
+            <span class="key-label">Q</span><span class="control-desc">Special Attack (Ground Slam)</span>
           </div>
         </div>
         <div class="scoring">
@@ -28,6 +29,15 @@
     <div class="score">Score: 0</div>
     <div class="pause-button-ui">⏸</div>
     <div class="health-bar"></div>
+    <div class="special-attack-ui" style="display: none;">
+      <div class="special-attack-label">
+        <span class="special-attack-keycap">Q</span>
+        GROUND SLAM
+      </div>
+      <div class="special-attack-bar">
+        <div class="special-attack-fill"></div>
+      </div>
+    </div>
     <div class="powerup-status"></div>
     <div class="powerup-arrows"></div>
     <div class="inspect-mode" style="display: none;">🔍 INSPECT MODE - WASD/Arrows: Move Camera | I: Toggle</div>
@@ -45,12 +55,12 @@
             <span class="control-description">Attack Enemies</span>
           </div>
           <div class="control-group">
-            <span class="control-key">ESC</span>
-            <span class="control-description">Pause / Resume</span>
+            <span class="control-key">Q</span>
+            <span class="control-description">Special Attack (Ground Slam)</span>
           </div>
           <div class="control-group">
-            <span class="control-key">I</span>
-            <span class="control-description">Inspect Mode (Dev)</span>
+            <span class="control-key">ESC</span>
+            <span class="control-description">Pause / Resume</span>
           </div>
         </div>
         <div class="pause-button">Press ESC or Click to Resume</div>
