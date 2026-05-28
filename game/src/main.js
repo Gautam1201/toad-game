@@ -288,13 +288,13 @@ function updateHealthUI() {
         if (i < health.current) {
             // Full heart - show colored toad
             const img = document.createElement('img');
-            img.src = '/tode.svg';
+            img.src = `${import.meta.env.BASE_URL}tode.svg`;
             img.alt = 'Health';
             heartContainer.appendChild(img);
         } else {
             // Empty heart - show grayscale/faded toad
             const img = document.createElement('img');
-            img.src = '/tode.svg';
+            img.src = `${import.meta.env.BASE_URL}tode.svg`;
             img.alt = 'Lost Health';
             heartContainer.classList.add('empty');
             heartContainer.appendChild(img);
@@ -494,7 +494,7 @@ function triggerGameOver() {
         // Phase 1: show header only
         gameOverElement.innerHTML = `
             <div class="game-over-content">
-                <h1><img src="/tode.svg" class="game-over-tode-icon" alt="Tode"/> GAME OVER</h1>
+                <h1><img src="${import.meta.env.BASE_URL}tode.svg" class="game-over-tode-icon" alt="Tode"/> GAME OVER</h1>
                 ${highScoreHTML}
                 <div class="game-over-stats-wrap" style="opacity:0; transform:translateY(20px); transition: opacity 0.4s ease 0s, transform 0.4s ease 0s;">
                     <div class="stat-item-hero">
