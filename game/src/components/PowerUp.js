@@ -36,21 +36,22 @@ export default class PowerUp {
     createVisual() {
         const config = this.getTypeConfig();
         
-        // Main sphere
-        const geometry = new THREE.SphereGeometry(12, 16, 16);
+        // Main sphere - LOW-POLY with fewer segments for faceted look
+        const geometry = new THREE.SphereGeometry(12, 8, 6);
         const material = new THREE.MeshStandardMaterial({
             color: config.color,
             emissive: config.emissive,
             emissiveIntensity: 0.5,
             metalness: 0.3,
-            roughness: 0.4
+            roughness: 0.4,
+            flatShading: true  // Faceted shading for low-poly look
         });
         
         this.mesh = new THREE.Mesh(geometry, material);
         this.group.add(this.mesh);
         
-        // Outer glow ring
-        const ringGeometry = new THREE.TorusGeometry(15, 2, 8, 16);
+        // Outer glow ring - also low-poly
+        const ringGeometry = new THREE.TorusGeometry(15, 2, 6, 12);
         const ringMaterial = new THREE.MeshBasicMaterial({
             color: config.glowColor,
             transparent: true,
@@ -227,7 +228,7 @@ export default class PowerUp {
                 return {
                     color: 0x00bfff,      // Cyan Blue
                     emissive: 0x00bfff,
-                    glowColor: 0x4dd0ff
+                    glowColor: 0x4dd0ff   // Cyan glow ring
                 };
             case PowerUpType.INVINCIBILITY:
                 return {

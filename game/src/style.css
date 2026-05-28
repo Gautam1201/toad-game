@@ -46,6 +46,26 @@ body {
   margin: 0 0 30px 0;
   text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.5);
   animation: pulse 2s ease-in-out infinite;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.title-tode-icon {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.4));
+}
+
+.start-high-score {
+  font-size: 20px;
+  color: #ffeb3b;
+  font-weight: bold;
+  margin: 15px 0 0 0;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+  letter-spacing: 1px;
 }
 
 .instructions {
@@ -63,16 +83,25 @@ body {
   font-weight: 700;
 }
 
-.instructions p {
+/* Two-column grid: pills in col 1, descriptions in col 2 — perfectly aligned */
+.controls-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 10px 16px;
+  margin-top: 4px;
+}
+
+.control-desc {
   font-size: 17px;
-  margin: 10px 0;
-  line-height: 1.6;
+  text-align: left;
 }
 
 /* Yellow pill for key labels inside instructions */
 .key-label {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   color: #2e7d32;
   background: linear-gradient(135deg, #ffeb3b, #fdd835);
   font-weight: bold;
@@ -82,6 +111,7 @@ body {
   vertical-align: middle;
   line-height: 1.4;
   white-space: nowrap;
+  text-align: center;
 }
 
 /* Dramatic "Survive!" strip shown on game start */
@@ -168,12 +198,18 @@ body {
   left: 50%;
   transform: translateX(-50%);
   color: white;
-  font-family: Arial, sans-serif;
-  font-size: 24px;
-  font-weight: bold;
-  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+  font-family: 'Arial Black', Arial, sans-serif;
+  font-size: 28px;
+  font-weight: 900;
+  text-shadow: 
+    3px 3px 0 rgba(0, 0, 0, 0.8),
+    -1px -1px 0 rgba(0, 0, 0, 0.3),
+    1px -1px 0 rgba(0, 0, 0, 0.3),
+    -1px 1px 0 rgba(0, 0, 0, 0.3),
+    1px 1px 0 rgba(0, 0, 0, 0.3);
   pointer-events: none;
   z-index: 10;
+  letter-spacing: 1px;
 }
 
 .pause-button-ui {
@@ -188,7 +224,8 @@ body {
   display: none; /* Hidden by default, shown when game starts */
   align-items: center;
   justify-content: center;
-  font-size: 28px;
+  font-size: 26px;
+  color: white;
   cursor: pointer;
   z-index: 10;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
@@ -222,29 +259,32 @@ body {
 
 .powerup-status {
   position: absolute;
-  top: 80px;
+  top: 95px;
   right: 20px;
   z-index: 10;
   pointer-events: none;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .powerup-indicator {
-  background: rgba(0, 0, 0, 0.8);
-  padding: 8px 12px;
-  border-radius: 8px;
-  border: 2px solid;
+  background: linear-gradient(135deg, rgba(101, 67, 33, 0.95), rgba(139, 69, 19, 0.95));
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 3px solid;
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-family: Arial, sans-serif;
+  gap: 10px;
+  font-family: 'Arial Black', Arial, sans-serif;
   font-size: 14px;
-  font-weight: bold;
+  font-weight: 900;
   color: white;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  box-shadow: 
+    0 4px 12px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
   animation: powerupPulse 1s ease-in-out infinite;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
 }
 
 .powerup-indicator .icon {
@@ -337,8 +377,17 @@ body {
 
 @keyframes heartbeat {
   0%, 100% { transform: scale(1); }
-  10% { transform: scale(1.1); }
-  20% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
+@keyframes healthBarShake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+  20%, 40%, 60%, 80% { transform: translateX(4px); }
+}
+
+.health-bar.shake {
+  animation: healthBarShake 0.5s;
 }
 
 .damage-flash {
@@ -410,6 +459,41 @@ body {
   text-shadow: 3px 3px 6px rgba(0, 0, 0, 0.5);
   font-weight: bold;
   letter-spacing: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+
+.game-over-tode-icon {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,0.4));
+}
+
+/* New high score badge */
+.new-high-score-badge {
+  background: linear-gradient(135deg, #ffeb3b, #fdd835);
+  color: #2e7d32;
+  font-size: 18px;
+  font-weight: bold;
+  padding: 12px 24px;
+  border-radius: 30px;
+  margin: 0 0 20px 0;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  animation: pulse 1.5s ease-in-out infinite;
+  box-shadow: 0 4px 15px rgba(255, 235, 59, 0.5);
+}
+
+/* Regular high score display */
+.high-score-display {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 20px 0;
+  letter-spacing: 1px;
 }
 
 /* Hero score shown prominently at top */

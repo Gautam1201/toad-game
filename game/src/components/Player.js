@@ -66,6 +66,17 @@ export default class Player {
             // Scale the model
             this.model.scale.setScalar(20);
             
+            // Store original material colors for speed boost effect
+            this.originalColors = new Map();
+            this.model.traverse((child) => {
+                if (child.isMesh && child.material) {
+                    this.originalColors.set(child, {
+                        color: child.material.color.clone(),
+                        emissive: child.material.emissive ? child.material.emissive.clone() : null
+                    });
+                }
+            });
+            
             // Calculate height for Z-offset
             const box = new THREE.Box3().setFromObject(this.model);
             const size = new THREE.Vector3();
@@ -89,6 +100,33 @@ export default class Player {
             this.shadow = new THREE.Mesh(shadowGeometry, shadowMaterial);
             this.shadow.position.z = 0.1;
             this.group.add(this.shadow);
+            
+            // Create red glow ring for attack boost (initially hidden)
+            const glowGeometry = new THREE.RingGeometry(this.collisionRadius * 1.1, this.collisionRadius * 1.3, 32);
+            const glowMaterial = new THREE.MeshBasicMaterial({
+                color: 0xff0000,
+                transparent: true,
+                opacity: 0.25,
+                side: THREE.DoubleSide
+            });
+            this.glowRing = new THREE.Mesh(glowGeometry, glowMaterial);
+            this.glowRing.position.z = 0.15;
+            this.glowRing.visible = false; // Hidden by default
+            this.group.add(this.glowRing);
+            
+            // Create shield sphere for invincibility (initially hidden)
+            const shieldGeometry = new THREE.SphereGeometry(this.collisionRadius * 2, 16, 12);
+            const shieldMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.2,
+                side: THREE.DoubleSide,
+                wireframe: false
+            });
+            this.shieldSphere = new THREE.Mesh(shieldGeometry, shieldMaterial);
+            this.shieldSphere.position.z = this.baseZ;
+            this.shieldSphere.visible = false;
+            this.group.add(this.shieldSphere);
             
             this.group.add(this.model);
         });
@@ -287,6 +325,104 @@ export default class Player {
             }
         }
         
+        // Update visual effects based on active power-ups
+        if (this.model) {
+            // Speed boost: tint model yellow, with flash warning when expiring
+            if (this.activeEffects.speedBoost) {
+                const timeRemaining = this.effectTimers.speedBoost;
+                const isExpiring = timeRemaining <= 2000; // 2 seconds warning
+                
+                // Flash between yellow and original green when expiring
+                let shouldShowYellow = true;
+                if (isExpiring) {
+                    const flashRate = 150; // Flash every 150ms for urgency
+                    shouldShowYellow = Math.floor(now / flashRate) % 2 === 0;
+                }
+                
+                this.model.traverse((child) => {
+                    if (child.isMesh && child.material) {
+                        if (shouldShowYellow) {
+                            child.material.color.setHex(0xFFC700); // Vibrant yellow #FFC700
+                            if (child.material.emissive) {
+                                child.material.emissive.setHex(0x8b7500);
+                            }
+                        } else {
+                            // Show original color during flash
+                            if (this.originalColors && this.originalColors.has(child)) {
+                                const original = this.originalColors.get(child);
+                                child.material.color.copy(original.color);
+                                if (child.material.emissive && original.emissive) {
+                                    child.material.emissive.copy(original.emissive);
+                                }
+                            }
+                        }
+                    }
+                });
+            } else {
+                // Restore original colors
+                this.model.traverse((child) => {
+                    if (child.isMesh && child.material && this.originalColors && this.originalColors.has(child)) {
+                        const original = this.originalColors.get(child);
+                        child.material.color.copy(original.color);
+                        if (child.material.emissive && original.emissive) {
+                            child.material.emissive.copy(original.emissive);
+                        }
+                    }
+                });
+            }
+        }
+        
+        // Attack boost: show red glow ring with flashing warning when expiring
+        if (this.glowRing) {
+            if (this.activeEffects.attackRangeBoost) {
+                const timeRemaining = this.effectTimers.attackRangeBoost;
+                const isExpiring = timeRemaining <= 2000; // 2 seconds warning
+                
+                // Flash the glow ring when expiring
+                if (isExpiring) {
+                    const flashRate = 150;
+                    this.glowRing.visible = Math.floor(now / flashRate) % 2 === 0;
+                } else {
+                    this.glowRing.visible = true;
+                }
+                
+                this.glowRing.material.color.setHex(0xff0000); // Red
+                this.glowRing.material.opacity = 0.25;
+            } else {
+                this.glowRing.visible = false; // Hidden when not active
+            }
+        }
+        
+        // Invincibility shield: show/hide shield sphere with flashing warning when expiring
+        if (this.shieldSphere) {
+            if (this.activeEffects.invincibilityShield) {
+                const timeRemaining = this.effectTimers.invincibilityShield;
+                const isExpiring = timeRemaining <= 2000; // 2 seconds warning
+                
+                // Flash the shield when expiring
+                if (isExpiring) {
+                    const flashRate = 150;
+                    this.shieldSphere.visible = Math.floor(now / flashRate) % 2 === 0;
+                } else {
+                    this.shieldSphere.visible = true;
+                }
+                
+                // Vertical pulsing effect from bottom to top (when visible)
+                if (this.shieldSphere.visible) {
+                    const waveSpeed = 0.003;
+                    const waveTime = (now * waveSpeed) % (Math.PI * 2);
+                    
+                    const scaleZ = 1 + Math.sin(waveTime) * 0.15;
+                    this.shieldSphere.scale.set(1, 1, scaleZ);
+                    
+                    const opacityPulse = Math.sin(waveTime) * 0.05 + 0.2;
+                    this.shieldSphere.material.opacity = opacityPulse;
+                }
+            } else {
+                this.shieldSphere.visible = false;
+            }
+        }
+        
         // Update invulnerability state
         if (this.isInvulnerable) {
             const timeSinceDamage = now - this.lastDamageTime;
@@ -354,6 +490,11 @@ export default class Player {
         const jumpOffset = Math.sin(this.progress * Math.PI) * JUMP_HEIGHT;
         if (this.model) {
             this.model.position.z = this.baseZ + jumpOffset;
+        }
+
+        // Update shield sphere position to follow the model during jumps
+        if (this.shieldSphere && this.model) {
+            this.shieldSphere.position.z = this.baseZ + jumpOffset;
         }
 
         // Update shadow opacity based on jump height (more realistic)

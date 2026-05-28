@@ -92,12 +92,28 @@ const COMPLEXITY_GROWTH_FACTOR = 0.005; // Slower difficulty increase (was 0.01)
 const SCALING_DELAY_SCORE = 100; // Delay scaling until score reaches this value
 let spawnTimer = 0;
 
-const spawnLocations = [
-    new THREE.Vector3(350, 350, 0),
-    new THREE.Vector3(-350, 350, 0),
-    new THREE.Vector3(350, -350, 0),
-    new THREE.Vector3(-350, -350, 0)
-];
+// Enemy spawn points: distributed within the inner forest ring (~580–620 radius)
+// so enemies appear to emerge from between the trees
+const SPAWN_FOREST_MIN = 560;
+const SPAWN_FOREST_MAX = 630;
+const SPAWN_COUNT = 40; // Number of spawn points spread around the ring
+
+function buildSpawnLocations() {
+    const pts = [];
+    for (let i = 0; i < SPAWN_COUNT; i++) {
+        const angle = (i / SPAWN_COUNT) * Math.PI * 2;
+        // Vary radius slightly per point so they're scattered inside the tree ring
+        const radius = SPAWN_FOREST_MIN + Math.random() * (SPAWN_FOREST_MAX - SPAWN_FOREST_MIN);
+        pts.push(new THREE.Vector3(
+            Math.cos(angle) * radius,
+            Math.sin(angle) * radius,
+            0
+        ));
+    }
+    return pts;
+}
+const spawnLocations = buildSpawnLocations();
+let lastSpawnIndex = -1;
 
 // Base values for scaling
 const BASE_ENEMY_SPEED = 0.7;
@@ -219,6 +235,22 @@ let gameStarted = false;
 let isPaused = false; // Pause state
 let inspectMode = false; // Developer inspect mode
 const floatingTexts = [];
+
+// High score system
+const HIGH_SCORE_KEY = 'todes_life_high_score';
+
+function getHighScore() {
+    const stored = localStorage.getItem(HIGH_SCORE_KEY);
+    return stored ? parseInt(stored, 10) : 0;
+}
+
+function setHighScore(score) {
+    localStorage.setItem(HIGH_SCORE_KEY, score.toString());
+}
+
+function isNewHighScore(score) {
+    return score > getHighScore();
+}
 const clock = new THREE.Clock();
 let lastPlayerHealth = 3; // Track health to detect damage
 const scoreElement = document.querySelector('.score');
@@ -230,6 +262,27 @@ const startScreenElement = document.querySelector('.start-screen');
 const inspectModeElement = document.querySelector('.inspect-mode');
 const pauseMenuElement = document.querySelector('.pause-menu');
 const pauseButtonUI = document.querySelector('.pause-button-ui');
+
+// Inject high score display into start screen
+function updateStartScreenHighScore() {
+    const highScore = getHighScore();
+    if (highScore > 0) {
+        const startContent = document.querySelector('.start-content h1');
+        if (startContent) {
+            // Check if high score display already exists
+            let highScoreDiv = document.querySelector('.start-high-score');
+            if (!highScoreDiv) {
+                highScoreDiv = document.createElement('div');
+                highScoreDiv.className = 'start-high-score';
+                startContent.insertAdjacentElement('afterend', highScoreDiv);
+            }
+            highScoreDiv.textContent = `High Score: ${highScore}`;
+        }
+    }
+}
+
+// Initialize high score display on load
+updateStartScreenHighScore();
 
 function showSurviveStrip() {
     const strip = document.createElement('div');
@@ -278,6 +331,13 @@ function showDamageFlash() {
     setTimeout(() => {
         document.body.removeChild(flash);
     }, 300);
+}
+
+function shakeHealthBar() {
+    if (healthBarElement) {
+        healthBarElement.classList.add('shake');
+        setTimeout(() => healthBarElement.classList.remove('shake'), 500);
+    }
 }
 
 const POWERUP_CONFIG = {
@@ -393,43 +453,28 @@ function updatePowerupUI() {
 function spawnEnemy() {
     if (isGameOver || enemies.length >= currentMaxEnemies) return;
     
-    // Try to find a valid spawn location that's not blocked
-    const maxAttempts = 10;
-    let spawnPos = null;
+    // Build a shuffled candidate list, excluding the last used index to avoid clustering
+    const indices = spawnLocations
+        .map((_, i) => i)
+        .filter(i => i !== lastSpawnIndex)
+        .sort(() => Math.random() - 0.5);
     
-    for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        const location = spawnLocations[Math.floor(Math.random() * spawnLocations.length)];
+    for (const idx of indices) {
+        const location = spawnLocations[idx];
         
-        // Check if this location is blocked by houses
-        const blockedByHouse = houses.some(house => {
-            const distance = location.distanceTo(house.group.position);
-            return distance < 100; // Conservative check: 100 units clearance
-        });
-        
-        // Check if blocked by trees
-        const blockedByTree = forest.checkTreeCollision(location, 30);
-        
-        // Check if too close to player (at least 150 units away)
+        const blockedByHouse = houses.some(h => location.distanceTo(h.group.position) < 100);
+        const blockedByTree  = forest.checkTreeCollision(location, 40);
         const tooCloseToPlayer = location.distanceTo(player.group.position) < 150;
+        // Don't stack too many enemies at one spot
+        const crowded = enemies.filter(e => location.distanceTo(e.group.position) < 80).length >= 2;
         
-        if (!blockedByHouse && !blockedByTree && !tooCloseToPlayer) {
-            spawnPos = location;
-            break;
+        if (!blockedByHouse && !blockedByTree && !tooCloseToPlayer && !crowded) {
+            lastSpawnIndex = idx;
+            enemies.push(new Enemy(scene, player, location));
+            return;
         }
     }
-    
-    // If we couldn't find a valid spawn, use a fallback dynamic position
-    if (!spawnPos) {
-        const angle = Math.random() * Math.PI * 2;
-        const distance = 350;
-        spawnPos = new THREE.Vector3(
-            Math.cos(angle) * distance,
-            Math.sin(angle) * distance,
-            0
-        );
-    }
-    
-    enemies.push(new Enemy(scene, player, spawnPos));
+    // All edge points exhausted — skip this spawn tick rather than spawning inside the map
 }
 
 function triggerGameOver() {
@@ -439,12 +484,24 @@ function triggerGameOver() {
     // Calculate game stats
     const timeSurvived = Math.floor((Date.now() - gameStartTime) / 1000); // seconds
     const finalScore = Math.floor(score);
+    const previousHighScore = getHighScore();
+    const isNewHigh = isNewHighScore(finalScore);
+    
+    // Save high score if achieved
+    if (isNewHigh) {
+        setHighScore(finalScore);
+    }
     
     // Update game over screen with stats
     if (gameOverElement) {
+        const highScoreHTML = isNewHigh 
+            ? `<div class="new-high-score-badge">🎉 NEW HIGH SCORE! 🎉</div>`
+            : `<div class="high-score-display">High Score: ${previousHighScore}</div>`;
+        
         gameOverElement.innerHTML = `
             <div class="game-over-content">
-                <h1>🐸 GAME OVER</h1>
+                <h1><img src="/tode.svg" class="game-over-tode-icon" alt="Tode"/> GAME OVER</h1>
+                ${highScoreHTML}
                 <div class="stat-item-hero">
                     <span class="stat-label">Final Score</span>
                     <span class="stat-value">${finalScore}</span>
@@ -601,45 +658,30 @@ function resetGame() {
     });
     floatingTexts.length = 0;
 
-    // Respawn enemies at corners with validation
-    for (let i = 0; i < spawnLocations.length; i++) {
-        const location = spawnLocations[i];
+    // Spawn initial enemies at 4 well-separated points within the forest ring
+    const initialCorners = [
+        new THREE.Vector3( Math.cos(Math.PI * 0.25) * 600,  Math.sin(Math.PI * 0.25) * 600, 0),
+        new THREE.Vector3( Math.cos(Math.PI * 0.75) * 600,  Math.sin(Math.PI * 0.75) * 600, 0),
+        new THREE.Vector3( Math.cos(Math.PI * 1.25) * 600,  Math.sin(Math.PI * 1.25) * 600, 0),
+        new THREE.Vector3( Math.cos(Math.PI * 1.75) * 600,  Math.sin(Math.PI * 1.75) * 600, 0),
+    ];
+    lastSpawnIndex = -1;
+    
+    for (const location of initialCorners) {
+        const blockedByHouse = houses.some(h => location.distanceTo(h.group.position) < 100);
+        const blockedByTree  = forest.checkTreeCollision(location, 40);
         
-        // Check if this location is blocked by houses or trees
-        const blockedByHouse = houses.some(house => {
-            const distance = location.distanceTo(house.group.position);
-            return distance < 100; // Conservative check: 100 units clearance
-        });
-        
-        const blockedByTree = forest.checkTreeCollision(location, 30);
-        
-        // If blocked, find an alternative position nearby
         let spawnPos = location;
         if (blockedByHouse || blockedByTree) {
-            // Try offsets in different directions
-            const offsets = [
-                new THREE.Vector3(100, 0, 0),
-                new THREE.Vector3(-100, 0, 0),
-                new THREE.Vector3(0, 100, 0),
-                new THREE.Vector3(0, -100, 0),
-                new THREE.Vector3(70, 70, 0),
-                new THREE.Vector3(-70, 70, 0),
-                new THREE.Vector3(70, -70, 0),
-                new THREE.Vector3(-70, -70, 0)
-            ];
-            
-            for (const offset of offsets) {
-                const testPos = location.clone().add(offset);
-                const houseBlocked = houses.some(house => testPos.distanceTo(house.group.position) < 100);
-                const treeBlocked = forest.checkTreeCollision(testPos, 30);
-                
-                if (!houseBlocked && !treeBlocked) {
-                    spawnPos = testPos;
-                    break;
-                }
+            // Walk along the same edge to find a clear point
+            const candidates = spawnLocations.filter(
+                p => !houses.some(h => p.distanceTo(h.group.position) < 100) &&
+                     !forest.checkTreeCollision(p, 40)
+            );
+            if (candidates.length) {
+                spawnPos = candidates[Math.floor(Math.random() * candidates.length)];
             }
         }
-        
         enemies.push(new Enemy(scene, player, spawnPos));
     }
 
@@ -896,6 +938,7 @@ renderer.setAnimationLoop(() => {
     const currentHealth = player.getHealth().current;
     if (currentHealth < lastPlayerHealth) {
         showDamageFlash();
+        shakeHealthBar();
     }
     lastPlayerHealth = currentHealth;
     
